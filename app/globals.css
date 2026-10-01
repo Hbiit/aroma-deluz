@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* ===== Aroma Deluz — Tailwind v4 Design Tokens ===== */
+@theme inline {
+  --color-purple-deep: #481e42;
+  --color-purple-darkest: #2d1229;
+  --color-purple-ink: #1f0b1d;
+  --color-gold: #c9a45c;
+  --color-gold-bright: #e5c468;
+  --color-cream: #f9f5ef;
+  --color-ivory: #fdfcf9;
+
+  --font-serif: var(--font-cormorant);
+  --font-sans: var(--font-jost);
+}
+
+/* ===== Global Styles ===== */
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--color-ivory);
+  color: var(--color-purple-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== Utility Classes ===== */
+.text-gold { color: var(--color-gold); }
+.text-gold-bright { color: var(--color-gold-bright); }
+.bg-purple-deep { background-color: var(--color-purple-deep); }
+.bg-purple-darkest { background-color: var(--color-purple-darkest); }
+.bg-cream { background-color: var(--color-cream); }
+.bg-ivory { background-color: var(--color-ivory); }
+
+/* Brand background utility using uploaded website background */
+.bg-brand-hero {
+  background-image: linear-gradient(to right, rgba(45, 18, 41, 0.95), rgba(45, 18, 41, 0.75)), url('/website-bg.jpg');
+  background-size: cover;
+  background-position: center;
+}
+
+/* ===== Animations ===== */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.7s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease both;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--color-cream); }
+::-webkit-scrollbar-thumb {
+  background: var(--color-gold);
+  border-radius: 3px;
+}
+
+/* ===== Selection ===== */
+::selection {
+  background: var(--color-gold);
+  color: var(--color-purple-darkest);
+}
