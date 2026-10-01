@@ -4,9 +4,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { useCart } from '@/lib/cart-context';
+import { useAuth } from '@/lib/auth-context';
 
 export function Header() {
   const { totalItems, openCart } = useCart();
+  const { user } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -81,6 +83,25 @@ export function Header() {
 
           {/* Icons */}
           <div className="flex items-center gap-3">
+            {/* Account / Sign-In */}
+            <Link
+              href={user ? '/account' : '/auth'}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-purple-ink hover:text-gold transition-colors relative"
+              aria-label={user ? 'My Account' : 'Sign In'}
+              title={user ? `Signed in as ${user.fullName || user.email}` : 'Sign In / Register'}
+            >
+              {user ? (
+                <span className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-darkest to-gold text-white text-[0.72rem] font-serif font-bold flex items-center justify-center shadow-sm">
+                  {user.fullName ? user.fullName[0].toUpperCase() : user.email[0].toUpperCase()}
+                </span>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              )}
+            </Link>
+
             <button className="w-9 h-9 rounded-full flex items-center justify-center text-purple-ink hover:text-gold transition-colors" aria-label="Search">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
