@@ -113,7 +113,7 @@ export function Footer() {
 
         {/* Bottom Bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between py-5 text-[0.75rem] text-white/35 gap-4">
-          <p>© 2025 Aroma Deluz. All rights reserved.</p>
+          <p>© 2026 Aroma Deluz. All rights reserved.</p>
           <div className="flex gap-6">
             <Link href="#" className="hover:text-gold transition-colors">Privacy Policy</Link>
             <Link href="#" className="hover:text-gold transition-colors">Terms of Service</Link>
