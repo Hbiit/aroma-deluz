@@ -6,12 +6,13 @@ import { formatNaira } from '@/lib/utils';
 
 interface CartContextType {
   items: CartItem[];
-  addItem: (item: Omit<CartItem, 'qty'>) => void;
+  addItem: (item: Omit<CartItem, 'qty'>, qty?: number) => void;
   removeItem: (id: string) => void;
   updateQty: (id: string, delta: number) => void;
   clearCart: () => void;
   totalItems: number;
   totalKobo: number;
+  totalAmount: number;
   totalFormatted: string;
   isOpen: boolean;
   openCart: () => void;
@@ -43,13 +44,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [items, mounted]);
 
-  const addItem = useCallback((item: Omit<CartItem, 'qty'>) => {
+  const addItem = useCallback((item: Omit<CartItem, 'qty'>, qtyToAdd: number = 1) => {
+    const addCount = Math.max(1, qtyToAdd);
     setItems(prev => {
       const existing = prev.find(i => i.id === item.id);
       if (existing) {
-        return prev.map(i => i.id === item.id ? { ...i, qty: i.qty + 1 } : i);
+        return prev.map(i => i.id === item.id ? { ...i, qty: i.qty + addCount } : i);
       }
-      return [...prev, { ...item, qty: 1 }];
+      return [...prev, { ...item, qty: addCount }];
     });
     setIsOpen(true);
   }, []);
@@ -72,6 +74,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const totalItems = items.reduce((sum, i) => sum + i.qty, 0);
   const totalKobo = items.reduce((sum, i) => sum + i.price_kobo * i.qty, 0);
+  const totalAmount = totalKobo;
   const totalFormatted = formatNaira(totalKobo);
 
   const openCart = useCallback(() => setIsOpen(true), []);
@@ -80,7 +83,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   return (
     <CartContext.Provider value={{
       items, addItem, removeItem, updateQty, clearCart,
-      totalItems, totalKobo, totalFormatted,
+      totalItems, totalKobo, totalAmount, totalFormatted,
       isOpen, openCart, closeCart,
     }}>
       {children}
