@@ -2,7 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { getFeaturedProducts } from '@/lib/data';
 import { ProductCard } from '@/components/ProductCard';
-import { NewsletterForm } from '@/components/NewsletterForm';
+import { NewsletterForm } from '../components/NewsletterForm';
 
 export default async function HomePage() {
   const featured = await getFeaturedProducts();
