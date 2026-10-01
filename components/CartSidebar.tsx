@@ -7,8 +7,18 @@ import { useAuth } from '@/lib/auth-context';
 import { formatNaira } from '@/lib/utils';
 
 export function CartSidebar() {
-  const { items, removeItem, updateQty, totalItems, totalFormatted, isOpen, closeCart } = useCart();
+  const { items, removeItem, updateQty, totalItems, totalFormatted, isOpen, closeCart, openAuthModal } = useCart();
   const { user } = useAuth();
+
+  const handleProceedToCheckout = (e: React.MouseEvent) => {
+    if (!user) {
+      e.preventDefault();
+      closeCart();
+      openAuthModal();
+    } else {
+      closeCart();
+    }
+  };
 
   return (
     <>
@@ -81,30 +91,13 @@ export function CartSidebar() {
               <span className="font-serif text-purple-deep">{totalFormatted}</span>
             </div>
 
-            {!user ? (
-              <div className="space-y-3">
-                <div className="p-3 bg-gold/10 border border-gold/30 rounded-lg text-center">
-                  <p className="text-[0.72rem] text-purple-ink font-medium">
-                    ✦ Please sign in or register to complete your order
-                  </p>
-                </div>
-                <Link
-                  href="/auth?redirect=/checkout"
-                  onClick={closeCart}
-                  className="block w-full bg-gold hover:bg-gold-bright text-purple-darkest text-center text-[0.8rem] font-semibold tracking-[0.2em] uppercase py-3.5 rounded transition-all shadow-md"
-                >
-                  Sign In To Complete Order
-                </Link>
-              </div>
-            ) : (
-              <Link
-                href="/checkout"
-                onClick={closeCart}
-                className="block w-full bg-purple-darkest text-white text-center text-[0.8rem] font-semibold tracking-[0.2em] uppercase py-3.5 rounded hover:bg-purple-deep transition-colors"
-              >
-                Proceed To Checkout
-              </Link>
-            )}
+            <Link
+              href="/checkout"
+              onClick={handleProceedToCheckout}
+              className="block w-full bg-purple-darkest text-white text-center text-[0.8rem] font-semibold tracking-[0.2em] uppercase py-3.5 rounded hover:bg-purple-deep transition-colors shadow-sm"
+            >
+              Proceed To Checkout
+            </Link>
           </div>
         )}
       </aside>

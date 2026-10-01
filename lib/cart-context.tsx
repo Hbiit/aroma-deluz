@@ -126,14 +126,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
         return [...prev, targetItem];
       });
 
-      // If customer is unregistered / not logged in, prompt them to sign in/up to complete their order
-      if (!user) {
-        setIsAuthModalOpen(true);
-      } else {
-        setIsOpen(true);
-      }
+      // Open the cart drawer
+      setIsOpen(true);
     },
-    [user]
+    []
   );
 
   const removeItem = useCallback((id: string) => {
