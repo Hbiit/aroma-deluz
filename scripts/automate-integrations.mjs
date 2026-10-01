@@ -46,6 +46,12 @@ function setEnvVar(key, value) {
   }
 }
 
+// Helper to get variable from existing envContent
+function getEnvVar(key) {
+  const match = envContent.match(new RegExp(`^${key}=["']?(.*?)["']?$`, 'm'));
+  return match ? match[1].trim() : undefined;
+}
+
 // 2. Parse command line arguments or environment
 const args = process.argv.slice(2);
 const params = {};
@@ -54,11 +60,11 @@ args.forEach(arg => {
   if (k) params[k.replace(/^--/, '')] = v.join('=');
 });
 
-const googleClientId = params.googleClientId || process.env.GOOGLE_CLIENT_ID;
-const googleClientSecret = params.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET;
-const mailgunApiKey = params.mailgunApiKey || process.env.MAILGUN_API_KEY;
-const mailgunDomain = params.mailgunDomain || process.env.MAILGUN_DOMAIN;
-const mailgunFrom = params.mailgunFrom || process.env.MAILGUN_FROM || 'Aroma De Luz <orders@aromadeluz.com>';
+const googleClientId = params.googleClientId || process.env.GOOGLE_CLIENT_ID || getEnvVar('GOOGLE_CLIENT_ID');
+const googleClientSecret = params.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET || getEnvVar('GOOGLE_CLIENT_SECRET');
+const mailgunApiKey = params.mailgunApiKey || process.env.MAILGUN_API_KEY || getEnvVar('MAILGUN_API_KEY');
+const mailgunDomain = params.mailgunDomain || process.env.MAILGUN_DOMAIN || getEnvVar('MAILGUN_DOMAIN');
+const mailgunFrom = params.mailgunFrom || process.env.MAILGUN_FROM || getEnvVar('MAILGUN_FROM') || 'Aroma De Luz <orders@mg.aromadeluz.com>';
 const testEmail = params.testEmail || params.email;
 
 console.log('📋 Validating parameters:');
@@ -118,7 +124,7 @@ function pushVercelVar(name, value) {
   }
 }
 
-const shouldPushVercel = params.vercel !== 'false' && (mailgunApiKey || mailgunDomain || googleClientId);
+const shouldPushVercel = params.vercel === 'true' || params.vercel === '';
 if (shouldPushVercel) {
   console.log('\n🚀 Syncing environment variables to Vercel Production...');
   if (mailgunApiKey) pushVercelVar('MAILGUN_API_KEY', mailgunApiKey);
@@ -126,6 +132,9 @@ if (shouldPushVercel) {
   if (mailgunFrom) pushVercelVar('MAILGUN_FROM', mailgunFrom);
   if (googleClientId) pushVercelVar('GOOGLE_CLIENT_ID', googleClientId);
   if (googleClientSecret) pushVercelVar('GOOGLE_CLIENT_SECRET', googleClientSecret);
+} else {
+  console.log('\n💡 Tip: To sync variables directly to Vercel production via CLI, run with --vercel=true');
+  console.log('Or add them in the Vercel Dashboard: Settings → Environment Variables.');
 }
 
 // 5. Dispatch Live Test Email via Mailgun
