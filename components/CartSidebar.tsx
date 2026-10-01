@@ -1,11 +1,14 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useCart } from '@/lib/cart-context';
+import { useAuth } from '@/lib/auth-context';
 import { formatNaira } from '@/lib/utils';
 
 export function CartSidebar() {
   const { items, removeItem, updateQty, totalItems, totalFormatted, isOpen, closeCart } = useCart();
+  const { user } = useAuth();
 
   return (
     <>
@@ -73,16 +76,35 @@ export function CartSidebar() {
         {/* Footer */}
         {items.length > 0 && (
           <div className="px-6 py-5 border-t border-gold/15 bg-cream">
-            <div className="flex justify-between mb-4 text-lg font-semibold text-purple-ink">
+            <div className="flex justify-between mb-3 text-lg font-semibold text-purple-ink">
               <span>Subtotal</span>
               <span className="font-serif text-purple-deep">{totalFormatted}</span>
             </div>
-            <a
-              href="/checkout"
-              className="block w-full bg-purple-darkest text-white text-center text-[0.8rem] font-semibold tracking-[0.2em] uppercase py-3.5 rounded hover:bg-purple-deep transition-colors"
-            >
-              Proceed To Checkout
-            </a>
+
+            {!user ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-gold/10 border border-gold/30 rounded-lg text-center">
+                  <p className="text-[0.72rem] text-purple-ink font-medium">
+                    ✦ Please sign in or register to complete your order
+                  </p>
+                </div>
+                <Link
+                  href="/auth?redirect=/checkout"
+                  onClick={closeCart}
+                  className="block w-full bg-gold hover:bg-gold-bright text-purple-darkest text-center text-[0.8rem] font-semibold tracking-[0.2em] uppercase py-3.5 rounded transition-all shadow-md"
+                >
+                  Sign In To Complete Order
+                </Link>
+              </div>
+            ) : (
+              <Link
+                href="/checkout"
+                onClick={closeCart}
+                className="block w-full bg-purple-darkest text-white text-center text-[0.8rem] font-semibold tracking-[0.2em] uppercase py-3.5 rounded hover:bg-purple-deep transition-colors"
+              >
+                Proceed To Checkout
+              </Link>
+            )}
           </div>
         )}
       </aside>

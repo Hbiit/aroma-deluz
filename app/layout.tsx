@@ -4,6 +4,7 @@ import { AuthProvider } from '@/lib/auth-context';
 import { CartProvider } from '@/lib/cart-context';
 import { Header } from '@/components/Header';
 import { CartSidebar } from '@/components/CartSidebar';
+import { AuthPromptModal } from '@/components/AuthPromptModal';
 import { Footer } from '@/components/Footer';
 import './globals.css';
 
@@ -53,6 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <main className="flex-1">{children}</main>
             <Footer />
             <CartSidebar />
+            <AuthPromptModal />
           </CartProvider>
         </AuthProvider>
       </body>

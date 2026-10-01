@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -16,7 +16,7 @@ const NIGERIAN_STATES = [
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, totalAmount, clearCart } = useCart();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -26,6 +26,14 @@ export default function CheckoutPage() {
   const [state, setState] = useState('Lagos');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Sync user details if user loads after mount
+  useEffect(() => {
+    if (user) {
+      if (!fullName && user.fullName) setFullName(user.fullName);
+      if (!email && user.email) setEmail(user.email);
+    }
+  }, [user, fullName, email]);
 
   // Delivery cost: Free over ₦150,000; otherwise ₦4,500 for Lagos, ₦7,500 elsewhere
   const deliveryKobo = totalAmount >= 15000000 ? 0 : state === 'Lagos' ? 450000 : 750000;
@@ -80,6 +88,39 @@ export default function CheckoutPage() {
       setLoading(false);
     }
   };
+
+  if (!authLoading && !user) {
+    return (
+      <div className="min-h-[75vh] flex flex-col items-center justify-center p-6 text-center bg-cream">
+        <div className="w-16 h-16 rounded-full bg-gold/15 flex items-center justify-center text-gold text-2xl mb-4 border border-gold/30">
+          ✦
+        </div>
+        <span className="text-[0.7rem] uppercase tracking-[0.2em] text-gold font-semibold mb-2">
+          Private Atelier Checkout
+        </span>
+        <h1 className="font-serif text-3xl md:text-4xl text-purple-ink mb-3">
+          Sign In to Complete Your Order
+        </h1>
+        <p className="text-purple-ink/70 text-sm max-w-[420px] mb-8 leading-relaxed">
+          To ensure your items are reserved, access complimentary gift packaging, and complete your delivery, please sign in or register your account.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 w-full max-w-[360px]">
+          <Link
+            href="/auth?redirect=/checkout"
+            className="flex-1 py-3.5 px-6 bg-gold hover:bg-gold-bright text-purple-darkest text-xs font-semibold tracking-[0.2em] uppercase rounded-xl transition-all shadow-md text-center"
+          >
+            Sign In / Register
+          </Link>
+          <Link
+            href="/products"
+            className="py-3.5 px-6 bg-transparent border border-purple-ink/20 text-purple-ink text-xs font-semibold tracking-[0.1em] uppercase rounded-xl hover:border-gold hover:text-gold transition-colors text-center"
+          >
+            Browse Scents
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (

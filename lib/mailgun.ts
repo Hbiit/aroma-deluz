@@ -187,3 +187,99 @@ export async function sendContactInquiryEmail(data: { name: string; email: strin
     return { success: false, error };
   }
 }
+
+/**
+ * Send luxury branded welcome email to newly registered users
+ */
+export async function sendWelcomeEmail(user: { email: string; fullName?: string }) {
+  const mg = getMailgunClient();
+  if (!mg) {
+    console.warn('[Mailgun] Skipping welcome email: Mailgun not configured.');
+    return { success: false, reason: 'unconfigured' };
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://aroma-deluz.vercel.app';
+  const name = user.fullName || 'Connoisseur';
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Welcome to Aroma De Luz</title>
+      <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #1a0818; color: #fdfcf9; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #2d1229; border: 1px solid #c9a45c44; border-radius: 12px; overflow: hidden; }
+        .header { text-align: center; padding: 40px 20px; background: linear-gradient(180deg, #481e42 0%, #2d1229 100%); border-bottom: 1px solid #c9a45c40; }
+        .logo-title { font-size: 28px; font-family: Georgia, serif; letter-spacing: 3px; color: #c9a45c; margin: 0 0 6px 0; font-weight: 700; text-transform: uppercase; }
+        .logo-subtitle { font-size: 11px; letter-spacing: 4px; color: #e5c468; margin: 0; text-transform: uppercase; }
+        .content { padding: 36px 30px; }
+        .greeting { font-size: 20px; color: #fdfcf9; margin-bottom: 16px; font-family: Georgia, serif; }
+        .lead-text { font-size: 14px; color: #d0c8cf; line-height: 1.8; margin-bottom: 24px; }
+        .highlight-card { background: linear-gradient(135deg, #3d1737 0%, #260e22 100%); border: 1px solid #c9a45c33; border-radius: 8px; padding: 22px; margin: 24px 0; text-align: center; }
+        .highlight-title { font-family: Georgia, serif; font-size: 16px; color: #c9a45c; margin-bottom: 8px; }
+        .highlight-body { font-size: 13px; color: #b8acb7; line-height: 1.6; }
+        .btn { display: inline-block; background-color: #c9a45c; color: #1a0818; padding: 14px 32px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; text-decoration: none; border-radius: 6px; margin: 24px 0; }
+        .footer { text-align: center; padding: 24px; font-size: 12px; color: #8a7a88; border-top: 1px solid #481e42; }
+      </style>
+    </head>
+    <body style="background-color: #1a0818; padding: 30px 10px;">
+      <div class="container">
+        <div class="header">
+          <h1 class="logo-title">Aroma De Luz</h1>
+          <p class="logo-subtitle">All About Scent &bull; Lagos</p>
+        </div>
+
+        <div class="content">
+          <p class="greeting">Bienvenue, ${name}</p>
+          <p class="lead-text">
+            We are delighted to welcome you to the world of <strong>Aroma De Luz</strong>. Your account has been officially created, granting you access to our private olfactory sanctuary.
+          </p>
+          <p class="lead-text">
+            Every creation in our atelier is crafted with rare botanicals, hand-poured soy wax, and master perfumery traditions right in Lagos, Nigeria.
+          </p>
+
+          <div class="highlight-card">
+            <div class="highlight-title">Your Exclusive Member Privileges</div>
+            <div class="highlight-body">
+              &bull; Persistent Saved Bag &amp; Scent Wishlist<br/>
+              &bull; Complimentary White-Glove Discovery Packaging<br/>
+              &bull; Early Access to Limited Seasonal Batches
+            </div>
+          </div>
+
+          <div style="text-align: center;">
+            <a href="${siteUrl}/products" class="btn" style="color: #1a0818;">Discover The Collection</a>
+          </div>
+
+          <p style="font-size: 13px; color: #9c8e9b; margin-top: 32px; line-height: 1.6;">
+            If you ever need guidance in selecting your signature note or curating a bespoke gift box, our concierge is always at your service.
+          </p>
+        </div>
+
+        <div class="footer">
+          <p style="margin: 0 0 6px 0;">Aroma De Luz &bull; Hand-Poured Soy Candles &amp; Haute Parfumerie</p>
+          <p style="margin: 0;">Inquiries: concierge@aromadeluz.com</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    const response = await mg.client.messages.create(mg.domain, {
+      from: mg.from,
+      to: [user.email],
+      subject: `✨ Welcome to Aroma De Luz, ${name}`,
+      html,
+      text: `Bienvenue to Aroma De Luz, ${name}!\n\nWe are delighted to welcome you into our circle of connoisseurs. Explore hand-poured soy candles and haute parfumerie at: ${siteUrl}/products\n\nWarm regards,\nThe Aroma De Luz Maison`,
+    });
+
+    console.log('[Mailgun] Welcome email sent:', response.id);
+    return { success: true, id: response.id };
+  } catch (error) {
+    console.error('[Mailgun] Error sending welcome email:', error);
+    return { success: false, error };
+  }
+}
+

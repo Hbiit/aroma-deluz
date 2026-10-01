@@ -40,10 +40,17 @@ function AuthContent() {
         if (res.error) {
           setError(res.error);
         } else {
+          // Dispatch welcome email asynchronously
+          fetch('/api/email/welcome', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, fullName }),
+          }).catch((err) => console.error('Welcome email dispatch error:', err));
+
           if (isDemo) {
             router.push(redirect);
           } else {
-            setSuccessMsg('Account created! Please check your email inbox to verify your account.');
+            setSuccessMsg('Account created! A welcome confirmation has been sent to your email.');
           }
         }
       }
