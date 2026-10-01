@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:setup": "node scripts/setup-supabase.mjs",
-    "db:seed": "node scripts/setup-supabase.mjs"
+    "db:seed": "node scripts/setup-supabase.mjs",
+    "integrations:setup": "node scripts/automate-integrations.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
