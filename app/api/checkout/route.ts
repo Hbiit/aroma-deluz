@@ -44,6 +44,24 @@ export async function POST(request: Request) {
       }
     }
 
+    // 3. Trigger Mailgun Order Confirmation Email asynchronously
+    try {
+      const { sendOrderConfirmationEmail } = await import('@/lib/mailgun');
+      await sendOrderConfirmationEmail({
+        reference,
+        fullName,
+        email,
+        phone,
+        address,
+        city,
+        state,
+        items,
+        totalKobo,
+      });
+    } catch (emailErr) {
+      console.error('Failed to trigger order confirmation email:', emailErr);
+    }
+
     return NextResponse.json({ success: true, reference });
   } catch (error: any) {
     console.error('Checkout API error:', error);
