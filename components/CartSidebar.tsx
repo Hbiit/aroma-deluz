@@ -57,7 +57,7 @@ export function CartSidebar() {
             items.map(item => (
               <div key={item.id} className="flex gap-4 py-4 border-b border-gold/10">
                 <div className="w-20 h-20 rounded overflow-hidden bg-cream flex-shrink-0">
-                  <Image src={item.image_url} alt={item.name} width={80} height={80} className="w-full h-full object-cover" />
+                  <Image src={item.image_url || '/product-lamour.jpg'} alt={item.name} width={80} height={80} className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1">
                   <p className="font-serif font-semibold text-purple-ink">{item.name}</p>

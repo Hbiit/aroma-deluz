@@ -379,7 +379,7 @@ export default function CheckoutPage() {
                 <div key={item.id} className="flex items-center gap-3 pb-3 border-b border-gold/10">
                   <div className="relative w-14 h-14 rounded-lg overflow-hidden bg-cream flex-shrink-0 border border-gold/15">
                     <Image
-                      src={item.image_url}
+                      src={item.image_url || '/product-lamour.jpg'}
                       alt={item.name}
                       fill
                       className="object-cover"

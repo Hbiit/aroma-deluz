@@ -8,11 +8,13 @@ import { formatNaira } from '@/lib/utils';
 import type { Product } from '@/lib/types';
 
 export function ProductCard({ product }: { product: Product }) {
-  const { addItem } = useCart();
+  const { addItem, openCart } = useCart();
   const [wishlisted, setWishlisted] = useState(false);
   const [added, setAdded] = useState(false);
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     addItem({
       id: product.id,
       slug: product.slug,
@@ -21,7 +23,8 @@ export function ProductCard({ product }: { product: Product }) {
       image_url: product.image_url || '/product-lamour.jpg',
     });
     setAdded(true);
-    setTimeout(() => setAdded(false), 1200);
+    openCart();
+    setTimeout(() => setAdded(false), 1500);
   };
 
   return (
@@ -58,6 +61,7 @@ export function ProductCard({ product }: { product: Product }) {
           {formatNaira(product.price_kobo)}
         </p>
         <button
+          type="button"
           onClick={handleAddToCart}
           className={`w-full text-[0.72rem] font-semibold tracking-[0.15em] uppercase py-2.5 rounded transition-all duration-300 ${
             added

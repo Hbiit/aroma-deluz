@@ -18,7 +18,11 @@ export function ProductDetailView({ product, relatedProducts }: ProductDetailVie
   const [activeTab, setActiveTab] = useState<'profile' | 'ritual' | 'packaging'>('profile');
   const [added, setAdded] = useState(false);
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     addItem(
       {
         id: product.id,

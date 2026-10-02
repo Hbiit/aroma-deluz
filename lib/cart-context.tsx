@@ -37,127 +37,161 @@ const CartContext = createContext<CartContextType | null>(null);
 const GUEST_STORAGE_KEY = 'aroma_guest_cart';
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const [items, setItems] = useState<CartItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [lastAddedItem, setLastAddedItem] = useState<CartItem | null>(null);
   const [mounted, setMounted] = useState(false);
 
-  // Track previous user to detect login and logout transitions
-  const prevUserIdRef = useRef<string | null>(null);
+  const activeUserId = user?.id || null;
 
-  // Load / migrate cart based on active user
-  useEffect(() => {
-    if (authLoading) return;
-
-    if (user?.id) {
-      // User is logged in
-      const userKey = `aroma_cart_${user.id}`;
-      let userItems: CartItem[] = [];
-
+  // Immediate synchronous helper to persist cart to localStorage
+  const saveCartToStorage = useCallback(
+    (newItems: CartItem[]) => {
+      if (typeof window === 'undefined') return;
       try {
-        const stored = localStorage.getItem(userKey);
-        if (stored) userItems = JSON.parse(stored);
-      } catch {}
-
-      // If user had staged items while browsing as guest, merge them into their account cart
-      try {
-        const guestStored = localStorage.getItem(GUEST_STORAGE_KEY);
-        if (guestStored) {
-          const guestItems: CartItem[] = JSON.parse(guestStored);
-          guestItems.forEach((gItem) => {
-            const existing = userItems.find((u) => u.id === gItem.id);
-            if (existing) {
-              existing.qty += gItem.qty;
-            } else {
-              userItems.push(gItem);
-            }
-          });
-          localStorage.removeItem(GUEST_STORAGE_KEY);
-        }
-      } catch {}
-
-      setItems(userItems);
-      prevUserIdRef.current = user.id;
-    } else {
-      // User is NOT logged in / logged out
-      // When a user logs out, their cart is NOT accessible unless they log back in
-      if (prevUserIdRef.current !== null) {
-        setItems([]);
-        setIsOpen(false);
-        prevUserIdRef.current = null;
-      } else {
-        // Load any temporary guest staged cart if exists
-        try {
-          const guestStored = localStorage.getItem(GUEST_STORAGE_KEY);
-          if (guestStored) setItems(JSON.parse(guestStored));
-        } catch {}
+        const storageKey = activeUserId ? `aroma_cart_${activeUserId}` : GUEST_STORAGE_KEY;
+        localStorage.setItem(storageKey, JSON.stringify(newItems));
+      } catch (e) {
+        console.warn('Failed to persist cart to storage:', e);
       }
-    }
+    },
+    [activeUserId]
+  );
 
-    setMounted(true);
-  }, [user, authLoading]);
-
-  // Persist items whenever they change
+  // Initial load on mount or when user account transitions
   useEffect(() => {
-    if (!mounted || authLoading) return;
+    if (typeof window === 'undefined') return;
 
-    if (user?.id) {
-      // Persist to user's private account storage
-      localStorage.setItem(`aroma_cart_${user.id}`, JSON.stringify(items));
-    } else {
-      // Persist to temporary guest storage
-      localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(items));
+    try {
+      const userKey = activeUserId ? `aroma_cart_${activeUserId}` : null;
+      let loadedItems: CartItem[] = [];
+
+      if (userKey) {
+        const stored = localStorage.getItem(userKey);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) loadedItems = parsed;
+        }
+      }
+
+      // Check for guest cart items to migrate or use
+      const guestStored = localStorage.getItem(GUEST_STORAGE_KEY);
+      if (guestStored) {
+        const parsedGuest = JSON.parse(guestStored);
+        if (Array.isArray(parsedGuest) && parsedGuest.length > 0) {
+          if (userKey) {
+            // Merge guest items into signed-in user cart
+            parsedGuest.forEach((g: CartItem) => {
+              const existing = loadedItems.find((u) => u.id === g.id || u.slug === g.slug);
+              if (existing) {
+                existing.qty += g.qty;
+              } else {
+                loadedItems.push(g);
+              }
+            });
+            localStorage.removeItem(GUEST_STORAGE_KEY);
+            localStorage.setItem(userKey, JSON.stringify(loadedItems));
+          } else {
+            loadedItems = parsedGuest;
+          }
+        }
+      }
+
+      setItems(loadedItems);
+    } catch (err) {
+      console.warn('Error reading cart from localStorage:', err);
+    } finally {
+      setMounted(true);
     }
-  }, [items, user, mounted, authLoading]);
+  }, [activeUserId]);
 
+  // Add Item to cart
   const addItem = useCallback(
     (item: Omit<CartItem, 'qty'>, qtyToAdd: number = 1) => {
-      const addCount = Math.max(1, qtyToAdd);
-      const targetItem: CartItem = { ...item, qty: addCount };
+      const count = Math.max(1, qtyToAdd);
+      const targetItem: CartItem = {
+        id: item.id,
+        slug: item.slug || item.id,
+        name: item.name,
+        price_kobo: item.price_kobo || 0,
+        image_url: item.image_url || '/product-lamour.jpg',
+        qty: count,
+      };
+
       setLastAddedItem(targetItem);
 
       setItems((prev) => {
-        const existing = prev.find((i) => i.id === item.id);
-        if (existing) {
-          return prev.map((i) => (i.id === item.id ? { ...i, qty: i.qty + addCount } : i));
+        const currentList = Array.isArray(prev) ? prev : [];
+        const existingIndex = currentList.findIndex(
+          (i) => i.id === item.id || (item.slug && i.slug === item.slug)
+        );
+
+        let nextList: CartItem[];
+        if (existingIndex > -1) {
+          nextList = currentList.map((i, idx) =>
+            idx === existingIndex ? { ...i, qty: i.qty + count } : i
+          );
+        } else {
+          nextList = [...currentList, targetItem];
         }
-        return [...prev, targetItem];
+
+        saveCartToStorage(nextList);
+        return nextList;
       });
 
-      // Open the cart drawer
+      // Always automatically open the cart sidebar so user sees immediate feedback
       setIsOpen(true);
     },
-    []
+    [saveCartToStorage]
   );
 
-  const removeItem = useCallback((id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
-  }, []);
+  // Remove Item
+  const removeItem = useCallback(
+    (id: string) => {
+      setItems((prev) => {
+        const currentList = Array.isArray(prev) ? prev : [];
+        const nextList = currentList.filter((i) => i.id !== id);
+        saveCartToStorage(nextList);
+        return nextList;
+      });
+    },
+    [saveCartToStorage]
+  );
 
-  const updateQty = useCallback((id: string, delta: number) => {
-    setItems((prev) =>
-      prev
-        .map((i) => (i.id === id ? { ...i, qty: i.qty + delta } : i))
-        .filter((i) => i.qty > 0)
-    );
-  }, []);
+  // Update Item Quantity
+  const updateQty = useCallback(
+    (id: string, delta: number) => {
+      setItems((prev) => {
+        const currentList = Array.isArray(prev) ? prev : [];
+        const nextList = currentList
+          .map((i) => (i.id === id ? { ...i, qty: i.qty + delta } : i))
+          .filter((i) => i.qty > 0);
+        saveCartToStorage(nextList);
+        return nextList;
+      });
+    },
+    [saveCartToStorage]
+  );
 
-  // Listen for storage or cart-cleared events from checkout success or other tabs
+  // Cross-tab synchronization
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     const handleCartCleared = () => {
       setItems([]);
     };
 
     const handleStorageChange = (e: StorageEvent) => {
-      const activeKey = user?.id ? `aroma_cart_${user.id}` : GUEST_STORAGE_KEY;
+      const activeKey = activeUserId ? `aroma_cart_${activeUserId}` : GUEST_STORAGE_KEY;
       if (e.key === activeKey) {
         if (!e.newValue) {
           setItems([]);
         } else {
           try {
-            setItems(JSON.parse(e.newValue));
+            const parsed = JSON.parse(e.newValue);
+            if (Array.isArray(parsed)) setItems(parsed);
           } catch {}
         }
       }
@@ -170,33 +204,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('cart-cleared', handleCartCleared);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [user]);
+  }, [activeUserId]);
 
+  // Clear Cart
   const clearCart = useCallback(() => {
     setItems([]);
-    try {
-      localStorage.removeItem(GUEST_STORAGE_KEY);
-      if (user?.id) {
-        localStorage.removeItem(`aroma_cart_${user.id}`);
-      }
-      // Thoroughly clear all aroma cart keys in localStorage
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && (k.startsWith('aroma_cart') || k === GUEST_STORAGE_KEY)) {
-          keysToRemove.push(k);
-        }
-      }
-      keysToRemove.forEach((k) => localStorage.removeItem(k));
-    } catch {}
-
     if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(GUEST_STORAGE_KEY);
+        if (activeUserId) {
+          localStorage.removeItem(`aroma_cart_${activeUserId}`);
+        }
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('aroma_cart') || k === GUEST_STORAGE_KEY)) {
+            localStorage.removeItem(k);
+          }
+        }
+      } catch {}
+
       window.dispatchEvent(new Event('cart-cleared'));
     }
-  }, [user]);
+  }, [activeUserId]);
 
-  const totalItems = items.reduce((sum, i) => sum + i.qty, 0);
-  const totalKobo = items.reduce((sum, i) => sum + i.price_kobo * i.qty, 0);
+  const totalItems = items.reduce((sum, i) => sum + (i.qty || 1), 0);
+  const totalKobo = items.reduce((sum, i) => sum + (i.price_kobo || 0) * (i.qty || 1), 0);
   const totalAmount = totalKobo;
   const totalFormatted = formatNaira(totalKobo);
 
