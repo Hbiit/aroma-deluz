@@ -13,7 +13,9 @@
     "test:paystack": "node scripts/test-paystack.mjs",
     "test:email": "node scripts/test-email.mjs",
     "test:brevo": "node scripts/test-brevo.mjs",
-    "test:nodemailer": "node scripts/test-nodemailer.mjs"
+    "test:nodemailer": "node scripts/test-nodemailer.mjs",
+    "products": "node scripts/manage-products.mjs",
+    "products:list": "node scripts/manage-products.mjs list"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
