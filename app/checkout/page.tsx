@@ -20,10 +20,10 @@ export default function CheckoutPage() {
 
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [email, setEmail] = useState(user?.email || '');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('Lagos');
-  const [state, setState] = useState('Lagos');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [address, setAddress] = useState(user?.address || '');
+  const [city, setCity] = useState(user?.city || 'Lagos');
+  const [state, setState] = useState(user?.state || 'Lagos');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -33,8 +33,12 @@ export default function CheckoutPage() {
     if (user) {
       if (!fullName && user.fullName) setFullName(user.fullName);
       if (!email && user.email) setEmail(user.email);
+      if (!phone && user.phone) setPhone(user.phone);
+      if (!address && user.address) setAddress(user.address);
+      if (user.city) setCity(user.city);
+      if (user.state) setState(user.state);
     }
-  }, [user, fullName, email]);
+  }, [user]);
 
   // Delivery cost: Free over ₦150,000; otherwise ₦4,500 for Lagos, ₦7,500 elsewhere
   const deliveryKobo = totalAmount >= 15000000 ? 0 : state === 'Lagos' ? 450000 : 750000;

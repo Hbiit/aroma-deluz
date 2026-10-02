@@ -144,12 +144,41 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  // Listen for storage or cart-cleared events from checkout success
+  useEffect(() => {
+    const handleCartCleared = () => {
+      setItems([]);
+    };
+
+    window.addEventListener('cart-cleared', handleCartCleared);
+    window.addEventListener('storage', handleCartCleared);
+
+    return () => {
+      window.removeEventListener('cart-cleared', handleCartCleared);
+      window.removeEventListener('storage', handleCartCleared);
+    };
+  }, []);
+
   const clearCart = useCallback(() => {
     setItems([]);
-    if (user?.id) {
-      localStorage.removeItem(`aroma_cart_${user.id}`);
-    } else {
+    try {
       localStorage.removeItem(GUEST_STORAGE_KEY);
+      if (user?.id) {
+        localStorage.removeItem(`aroma_cart_${user.id}`);
+      }
+      // Thoroughly clear all aroma cart keys in localStorage
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('aroma_cart') || k === GUEST_STORAGE_KEY)) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('cart-cleared'));
     }
   }, [user]);
 

@@ -115,9 +115,9 @@ export function Header() {
               <div className="flex items-center gap-1 sm:gap-2">
                 {/* Account / Sign-In */}
                 <Link
-                  href={user ? '/account' : '/auth'}
+                  href={user ? '/profile' : '/auth'}
                   className="w-9 h-9 rounded-full flex items-center justify-center text-purple-ink hover:text-gold transition-colors relative"
-                  aria-label={user ? 'My Account' : 'Sign In'}
+                  aria-label={user ? 'My Profile' : 'Sign In'}
                   title={user ? `Signed in as ${user.fullName || user.email}` : 'Sign In / Register'}
                 >
                   {user ? (

@@ -26,7 +26,20 @@ function SuccessContent() {
   const hasVerifiedRef = useRef(false);
 
   useEffect(() => {
-    // 1. Check local session storage for instant optimistic display
+    // 1. Immediately wipe the cart as payment has been completed on Paystack
+    clearCart();
+    try {
+      localStorage.removeItem('aroma_guest_cart');
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('aroma_cart') || k === 'aroma_guest_cart')) {
+          localStorage.removeItem(k);
+        }
+      }
+      window.dispatchEvent(new Event('cart-cleared'));
+    } catch {}
+
+    // 2. Check local session storage for instant optimistic display
     let localOrder: any = null;
     try {
       const stored = sessionStorage.getItem('last_order');

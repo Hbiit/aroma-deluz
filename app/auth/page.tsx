@@ -5,11 +5,16 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { useCart } from '@/lib/cart-context';
 
 function AuthContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/account';
+  const { items } = useCart();
+
+  const explicitRedirect = searchParams.get('redirect');
+  const hasCartItems = items.length > 0 || (typeof window !== 'undefined' && Boolean(localStorage.getItem('aroma_guest_cart')));
+  const targetRedirect = explicitRedirect || (hasCartItems ? '/checkout' : '/profile');
 
   const { signInWithEmail, signUpWithEmail, signInWithGoogle, isDemo } = useAuth();
 
@@ -33,7 +38,7 @@ function AuthContent() {
         if (res.error) {
           setError(res.error);
         } else {
-          router.push(redirect);
+          router.push(targetRedirect);
         }
       } else {
         const res = await signUpWithEmail(email, password, fullName);
@@ -47,11 +52,8 @@ function AuthContent() {
             body: JSON.stringify({ email, fullName }),
           }).catch((err) => console.error('Welcome email dispatch error:', err));
 
-          if (isDemo) {
-            router.push(redirect);
-          } else {
-            setSuccessMsg('Account created! A welcome confirmation has been sent to your email.');
-          }
+          // Immediately take user to the payment page to complete order
+          router.push(targetRedirect);
         }
       }
     } catch (err: unknown) {
@@ -65,11 +67,11 @@ function AuthContent() {
     setError(null);
     setLoading(true);
     try {
-      const res = await signInWithGoogle();
+      const res = await signInWithGoogle(targetRedirect);
       if (res.error) {
         setError(res.error);
       } else if (isDemo) {
-        router.push(redirect);
+        router.push(targetRedirect);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Google sign-in failed.');
