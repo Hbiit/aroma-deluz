@@ -144,20 +144,33 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  // Listen for storage or cart-cleared events from checkout success
+  // Listen for storage or cart-cleared events from checkout success or other tabs
   useEffect(() => {
     const handleCartCleared = () => {
       setItems([]);
     };
 
+    const handleStorageChange = (e: StorageEvent) => {
+      const activeKey = user?.id ? `aroma_cart_${user.id}` : GUEST_STORAGE_KEY;
+      if (e.key === activeKey) {
+        if (!e.newValue) {
+          setItems([]);
+        } else {
+          try {
+            setItems(JSON.parse(e.newValue));
+          } catch {}
+        }
+      }
+    };
+
     window.addEventListener('cart-cleared', handleCartCleared);
-    window.addEventListener('storage', handleCartCleared);
+    window.addEventListener('storage', handleStorageChange);
 
     return () => {
       window.removeEventListener('cart-cleared', handleCartCleared);
-      window.removeEventListener('storage', handleCartCleared);
+      window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [user]);
 
   const clearCart = useCallback(() => {
     setItems([]);
