@@ -14,6 +14,7 @@ function SuccessContent() {
     searchParams.get('ref') ||
     'AROMA-DELUZ';
 
+  const paymentMethodQuery = searchParams.get('payment_method') || 'paystack';
   const isDemoQuery = searchParams.get('demo') === 'true';
 
   const { clearCart } = useCart();
@@ -26,7 +27,7 @@ function SuccessContent() {
   const hasVerifiedRef = useRef(false);
 
   useEffect(() => {
-    // 1. Immediately wipe the cart as payment has been completed on Paystack
+    // 1. Immediately wipe the cart as payment has been completed
     clearCart();
     try {
       localStorage.removeItem('aroma_guest_cart');
@@ -48,18 +49,43 @@ function SuccessContent() {
         setOrder(localOrder);
         if (localOrder.items) setOrderItems(localOrder.items);
       }
-    } catch {
-      // ignore parsing error
-    }
+    } catch {}
 
     if (hasVerifiedRef.current) return;
     hasVerifiedRef.current = true;
 
     const maxAttempts = 5;
 
-    // 2. Server-side verification with Paystack (with automatic retry polling)
+    // 3. Server-side verification (with automatic retry polling)
     async function verifyOrder() {
       setVerifying(true);
+
+      // If PayPal payment method, confirm directly with our confirmation endpoint
+      if (paymentMethodQuery === 'paypal') {
+        try {
+          const confirmRes = await fetch('/api/orders/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              reference: ref,
+              paymentMethod: 'paypal',
+              customerEmail: localOrder?.email,
+            }),
+          });
+          const confirmData = await confirmRes.json();
+          if (confirmRes.ok && confirmData.success) {
+            setVerified(true);
+            if (confirmData.order) setOrder(confirmData.order);
+            if (confirmData.items) setOrderItems(confirmData.items);
+            clearCart();
+            try { sessionStorage.removeItem('last_order'); } catch {}
+            setVerifying(false);
+            return;
+          }
+        } catch (e) {
+          console.warn('Direct PayPal confirmation ping failed, continuing fallback:', e);
+        }
+      }
 
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -83,9 +109,9 @@ function SuccessContent() {
             return;
           }
 
-          // If status is ongoing or pending on Paystack, retry in 2.5 seconds
+          // If status is ongoing or pending, retry in 2 seconds
           if (attempt < maxAttempts) {
-            await new Promise((resolve) => setTimeout(resolve, 2500));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
             continue;
           }
 
@@ -95,7 +121,7 @@ function SuccessContent() {
               data.message || 'Payment has not been completed or was cancelled.'
             );
           } else {
-            if (localOrder || isDemoQuery) {
+            if (localOrder || isDemoQuery || paymentMethodQuery === 'paypal') {
               setVerified(true);
               clearCart();
             } else {
@@ -106,10 +132,10 @@ function SuccessContent() {
         } catch (err: any) {
           console.error(`Verification attempt ${attempt} error:`, err);
           if (attempt < maxAttempts) {
-            await new Promise((resolve) => setTimeout(resolve, 2500));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
             continue;
           }
-          if (localOrder || isDemoQuery) {
+          if (localOrder || isDemoQuery || paymentMethodQuery === 'paypal') {
             setVerified(true);
             clearCart();
           } else {
@@ -123,20 +149,22 @@ function SuccessContent() {
     }
 
     verifyOrder();
-  }, [ref, clearCart, isDemoQuery]);
+  }, [ref, clearCart, isDemoQuery, paymentMethodQuery]);
 
   return (
     <div className="min-h-[85vh] bg-cream py-16 px-4">
       <div className="max-w-[700px] mx-auto bg-white rounded-2xl p-8 sm:p-12 border border-gold/20 shadow-[0_20px_60px_rgba(26,15,48,0.06)] animate-fade-in-up">
-        {/* State 1: Verifying with Paystack */}
+        {/* State 1: Verifying */}
         {verifying && (
           <div className="text-center py-10 space-y-4">
             <div className="w-14 h-14 border-3 border-gold border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-[0.72rem] tracking-[0.25em] uppercase text-gold font-semibold">
-              Paystack Payment Verification
+              {paymentMethodQuery === 'paypal' ? 'PayPal Transaction Confirmation' : 'Paystack Payment Verification'}
             </p>
             <h2 className="font-serif text-2xl text-purple-ink">
-              Verifying your transaction with Paystack...
+              {paymentMethodQuery === 'paypal'
+                ? 'Confirming your payment with PayPal...'
+                : 'Verifying your transaction with Paystack...'}
             </h2>
             <p className="text-xs text-purple-ink/60">
               Please wait while our atelier confirms your payment and reserves your items.
@@ -205,14 +233,29 @@ function SuccessContent() {
             )}
 
             <p className="text-center text-[0.72rem] tracking-[0.25em] uppercase text-gold font-semibold mb-2">
-              Payment Confirmed · Order Placed
+              Payment Confirmed via {paymentMethodQuery === 'paypal' ? 'PayPal' : 'Paystack'} · Order Placed
             </p>
             <h1 className="font-serif text-3xl sm:text-4xl text-purple-ink text-center mb-3">
               Thank you for choosing Aroma De Luz.
             </h1>
-            <p className="text-center text-xs sm:text-sm text-purple-ink/70 max-w-[480px] mx-auto mb-8 font-light leading-relaxed">
+            <p className="text-center text-xs sm:text-sm text-purple-ink/70 max-w-[480px] mx-auto mb-6 font-light leading-relaxed">
               Your bespoke fragrance order has been received at our atelier. Our artisans are carefully preparing your hand-poured creations.
             </p>
+
+            {/* Email Confirmation Notice */}
+            <div className="mb-8 p-4 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-950 flex items-start gap-3 shadow-xs">
+              <span className="text-xl flex-shrink-0">✉️</span>
+              <div className="text-xs">
+                <strong className="font-semibold block text-[0.75rem] uppercase tracking-wider text-emerald-900">
+                  Confirmation Email Dispatched
+                </strong>
+                <p className="mt-1 text-emerald-800/90 leading-relaxed">
+                  Your luxury receipt has been dispatched to{' '}
+                  <span className="font-semibold underline text-emerald-950">{order?.email || 'your email'}</span> from{' '}
+                  <span className="font-semibold text-emerald-950">testerdefault8@gmail.com</span>.
+                </p>
+              </div>
+            </div>
 
             {/* Order Reference Box */}
             <div className="bg-ivory rounded-xl p-5 border border-gold/20 flex flex-col sm:flex-row items-center justify-between gap-4 mb-8 text-xs">

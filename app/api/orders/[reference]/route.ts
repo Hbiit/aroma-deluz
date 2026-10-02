@@ -50,8 +50,48 @@ export async function GET(
 
     const paystackActive = isPaystackConfigured();
 
-    // 2. If already paid, return confirmed order
+    // Helper to send email once
+    const triggerConfirmationEmail = async () => {
+      if (!order.email_sent_at) {
+        try {
+          const { sendOrderConfirmationEmail } = await import('@/lib/mailgun');
+          const emailRes = await sendOrderConfirmationEmail({
+            reference: order.reference,
+            fullName: order.full_name || 'Valued Client',
+            email: order.email,
+            phone: order.phone,
+            address: order.address || '',
+            city: order.city || 'Lagos',
+            state: order.state || 'Lagos',
+            items: items.map((i: any) => ({
+              name: i.name,
+              qty: i.quantity || i.qty || 1,
+              price_kobo: i.unit_price_kobo || i.price_kobo || 0,
+            })),
+            totalKobo: order.total_kobo,
+          });
+
+          if (emailRes.success) {
+            const sentAt = new Date().toISOString();
+            if (supabase) {
+              await supabase
+                .from('orders')
+                .update({ email_sent_at: sentAt })
+                .eq('reference', reference);
+            } else {
+              memoryStore.markEmailSent(reference);
+            }
+            order.email_sent_at = sentAt;
+          }
+        } catch (emailErr) {
+          console.error('[Order Confirmation Email Error]:', emailErr);
+        }
+      }
+    };
+
+    // 2. If already paid, ensure confirmation email was sent, then return confirmed order
     if (order.status === 'paid') {
+      await triggerConfirmationEmail();
       return NextResponse.json({
         success: true,
         order,
@@ -61,7 +101,7 @@ export async function GET(
       });
     }
 
-    // 3. Demo mode verification (no Paystack key)
+    // 3. Demo mode verification (no Paystack key or PayPal/Demo flag)
     if (!paystackActive || order.demo) {
       if (order.status !== 'paid') {
         if (supabase) {
@@ -72,6 +112,7 @@ export async function GET(
           order.status = 'paid';
         }
       }
+      await triggerConfirmationEmail();
       return NextResponse.json({
         success: true,
         order,
