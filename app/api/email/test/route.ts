@@ -44,27 +44,33 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
+  const preferred = (process.env.EMAIL_PROVIDER || 'nodemailer').toLowerCase();
   const hasBrevo = Boolean(process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY);
   const hasMailgun = Boolean(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
+  const hasGmail = Boolean(
+    (process.env.GMAIL_USER || 'testerdefault8@gmail.com') && process.env.GMAIL_APP_PASSWORD
+  );
   const hasSmtp = Boolean(
-    (process.env.SMTP_USER && process.env.SMTP_PASS) ||
-    (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD)
+    (process.env.SMTP_USER && process.env.SMTP_PASS) || hasGmail
   );
 
   return NextResponse.json({
     status: 'Email test endpoint ready. Send POST with { email: "your-email@example.com" } to dispatch a test email.',
+    activeProvider: preferred,
     providers: {
+      nodemailer: {
+        configured: hasSmtp,
+        senderEmail: process.env.GMAIL_USER || 'testerdefault8@gmail.com',
+        mode: hasGmail ? 'direct-gmail-smtp' : hasSmtp ? 'custom-smtp' : 'ephemeral-ethereal-sandbox',
+        from: process.env.SMTP_FROM || `"Aroma De Luz" <${process.env.GMAIL_USER || 'testerdefault8@gmail.com'}>`,
+      },
       brevo: {
         configured: hasBrevo,
-        senderEmail: process.env.BREVO_SENDER_EMAIL || 'orders@aromadeluz.com',
+        senderEmail: process.env.BREVO_SENDER_EMAIL || 'testerdefault8@gmail.com',
       },
       mailgun: {
         configured: hasMailgun,
         domain: process.env.MAILGUN_DOMAIN || null,
-      },
-      nodemailerFallback: {
-        configured: hasSmtp,
-        mode: hasSmtp ? 'production-smtp' : 'ephemeral-ethereal-test',
       },
     },
   });

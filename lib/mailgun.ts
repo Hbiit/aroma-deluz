@@ -1,8 +1,110 @@
 import FormData from 'form-data';
 import Mailgun from 'mailgun.js';
 import { formatNaira } from '@/lib/utils';
-import { sendEmailWithNodemailer } from '@/lib/nodemailer';
+import { sendEmailWithNodemailer, isNodemailerConfigured } from '@/lib/nodemailer';
 import { sendEmailWithBrevo, isBrevoConfigured } from '@/lib/brevo';
+
+interface DispatchResult {
+  success: boolean;
+  provider: string;
+  id?: string;
+  error?: string;
+  previewUrl?: string | false;
+}
+
+/**
+ * Universal multi-tier email dispatcher respecting EMAIL_PROVIDER priority:
+ * Nodemailer (Gmail / SMTP) -> Brevo (REST API) -> Mailgun (API) -> Nodemailer (Sandbox/Fallback)
+ */
+async function dispatchEmail(params: {
+  to: string;
+  fullName?: string;
+  replyTo?: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<DispatchResult> {
+  const preferred = (process.env.EMAIL_PROVIDER || '').toLowerCase();
+
+  // 1. Nodemailer Priority (when EMAIL_PROVIDER=nodemailer OR configured with Gmail App Password)
+  const isNodemailerReady = isNodemailerConfigured();
+  if (preferred === 'nodemailer' || (isNodemailerReady && preferred !== 'brevo' && preferred !== 'mailgun')) {
+    try {
+      const res = await sendEmailWithNodemailer({
+        to: params.to,
+        replyTo: params.replyTo,
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+      });
+      if (res.success) {
+        console.log(`[Nodemailer] Email dispatched successfully to ${params.to} (${res.provider}). ID: ${res.messageId}`);
+        return { success: true, provider: res.provider, id: res.messageId, previewUrl: res.previewUrl };
+      }
+      console.warn('[Nodemailer] Dispatch unsuccessful, attempting Brevo/Mailgun fallback:', res.error);
+    } catch (err: any) {
+      console.warn('[Nodemailer] Dispatch exception:', err.message);
+    }
+  }
+
+  // 2. Brevo REST API v3
+  if (isBrevoConfigured() && preferred !== 'mailgun') {
+    try {
+      const brevoRes = await sendEmailWithBrevo({
+        to: [{ email: params.to, name: params.fullName }],
+        replyTo: params.replyTo ? { email: params.replyTo, name: params.fullName || 'User' } : undefined,
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+      });
+
+      if (brevoRes.success) {
+        console.log('[Brevo] Email dispatched successfully:', brevoRes.messageId);
+        return { success: true, provider: 'brevo', id: brevoRes.messageId };
+      }
+      console.warn('[Brevo] Dispatch failed, trying fallback:', brevoRes.error);
+    } catch (brevoErr: any) {
+      console.warn('[Brevo] Exception:', brevoErr.message);
+    }
+  }
+
+  // 3. Mailgun API
+  const mg = getMailgunClient();
+  if (mg && preferred !== 'brevo') {
+    try {
+      const response = await mg.client.messages.create(mg.domain, {
+        from: mg.from,
+        to: [params.to],
+        replyTo: params.replyTo,
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+      });
+
+      console.log('[Mailgun] Email dispatched successfully:', response.id);
+      return { success: true, provider: 'mailgun', id: response.id };
+    } catch (mgErr: any) {
+      console.warn(`[Mailgun] Delivery failed (${mgErr.message || 'error'}), using Nodemailer fallback...`);
+    }
+  }
+
+  // 4. Ultimate Nodemailer Fallback (Sandbox Ethereal or Local JSON)
+  const fallbackRes = await sendEmailWithNodemailer({
+    to: params.to,
+    replyTo: params.replyTo,
+    subject: params.subject,
+    html: params.html,
+    text: params.text,
+  });
+
+  return {
+    success: fallbackRes.success,
+    provider: fallbackRes.provider,
+    id: fallbackRes.messageId,
+    previewUrl: fallbackRes.previewUrl,
+    error: fallbackRes.error,
+  };
+}
 
 // Initialize Mailgun client
 function getMailgunClient() {
@@ -144,50 +246,9 @@ export async function sendOrderConfirmationEmail(order: OrderEmailData) {
   const subject = `Order Confirmation — ${order.reference} | Aroma De Luz`;
   const text = `Thank you for your order, ${order.fullName}!\nReference: ${order.reference}\nTotal: ${formatNaira(order.totalKobo)}\n\nYour items:\n${order.items.map((i) => `- ${i.name} (x${i.qty || i.quantity || 1}): ${formatNaira(i.price_kobo * (i.qty || i.quantity || 1))}`).join('\n')}\n\nDelivery to: ${order.address}, ${order.city}, ${order.state}`;
 
-  // 1. Primary Option: Brevo (if configured)
-  if (isBrevoConfigured()) {
-    try {
-      const brevoRes = await sendEmailWithBrevo({
-        to: [{ email: order.email, name: order.fullName }],
-        subject,
-        html,
-        text,
-      });
-
-      if (brevoRes.success) {
-        console.log('[Brevo] Order confirmation sent:', brevoRes.messageId);
-        return { success: true, provider: 'brevo', id: brevoRes.messageId };
-      }
-      console.warn('[Brevo] Failed, trying fallback:', brevoRes.error);
-    } catch (brevoErr) {
-      console.warn('[Brevo] Exception, trying fallback:', brevoErr);
-    }
-  }
-
-  // 2. Secondary Option: Mailgun (if configured)
-  const mg = getMailgunClient();
-  if (mg) {
-    try {
-      const response = await mg.client.messages.create(mg.domain, {
-        from: mg.from,
-        to: [order.email],
-        subject,
-        html,
-        text,
-      });
-
-      console.log('[Mailgun] Order confirmation sent:', response.id);
-      return { success: true, provider: 'mailgun', id: response.id };
-    } catch (error: any) {
-      console.warn(
-        `[Mailgun] Delivery failed (${error.message || 'unknown error'}), falling back to Nodemailer...`
-      );
-    }
-  }
-
-  // 3. Tertiary Option: Nodemailer Fallback
-  return sendEmailWithNodemailer({
+  return dispatchEmail({
     to: order.email,
+    fullName: order.fullName,
     subject,
     html,
     text,
@@ -195,7 +256,7 @@ export async function sendOrderConfirmationEmail(order: OrderEmailData) {
 }
 
 /**
- * Send concierge inquiry email via Brevo / Mailgun / Nodemailer
+ * Send concierge inquiry email via Nodemailer / Brevo / Mailgun
  */
 export async function sendContactInquiryEmail(data: {
   name: string;
@@ -217,55 +278,18 @@ export async function sendContactInquiryEmail(data: {
 
   const recipient = process.env.CONCIERGE_EMAIL || 'concierge@aromadeluz.com';
 
-  // 1. Brevo
-  if (isBrevoConfigured()) {
-    try {
-      const brevoRes = await sendEmailWithBrevo({
-        to: [{ email: recipient, name: 'Aroma De Luz Concierge' }],
-        replyTo: { email: data.email, name: data.name },
-        subject: emailSubject,
-        html,
-        text,
-      });
-      if (brevoRes.success) {
-        return { success: true, provider: 'brevo', id: brevoRes.messageId };
-      }
-    } catch (err) {
-      console.warn('[Brevo Contact Error]:', err);
-    }
-  }
-
-  // 2. Mailgun
-  const mg = getMailgunClient();
-  if (mg) {
-    try {
-      const response = await mg.client.messages.create(mg.domain, {
-        from: mg.from,
-        to: [recipient],
-        replyTo: data.email,
-        subject: emailSubject,
-        text,
-        html,
-      });
-
-      return { success: true, provider: 'mailgun', id: response.id };
-    } catch (error: any) {
-      console.warn(`[Mailgun] Contact inquiry failed (${error.message}), falling back to Nodemailer...`);
-    }
-  }
-
-  // 3. Nodemailer Fallback
-  return sendEmailWithNodemailer({
+  return dispatchEmail({
     to: recipient,
+    fullName: 'Aroma De Luz Concierge',
     replyTo: data.email,
     subject: emailSubject,
-    text,
     html,
+    text,
   });
 }
 
 /**
- * Send luxury branded welcome email to newly registered users via Brevo / Mailgun / Nodemailer
+ * Send luxury branded welcome email to newly registered users via Nodemailer / Brevo / Mailgun
  */
 export async function sendWelcomeEmail(user: { email: string; fullName?: string }) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://aroma-deluz.vercel.app';
@@ -339,46 +363,9 @@ export async function sendWelcomeEmail(user: { email: string; fullName?: string 
   const subject = `✨ Welcome to Aroma De Luz, ${name}`;
   const text = `Bienvenue to Aroma De Luz, ${name}!\n\nWe are delighted to welcome you into our circle of connoisseurs. Explore hand-poured soy candles and haute parfumerie at: ${siteUrl}/products\n\nWarm regards,\nThe Aroma De Luz Maison`;
 
-  // 1. Brevo
-  if (isBrevoConfigured()) {
-    try {
-      const brevoRes = await sendEmailWithBrevo({
-        to: [{ email: user.email, name }],
-        subject,
-        html,
-        text,
-      });
-      if (brevoRes.success) {
-        console.log('[Brevo] Welcome email sent:', brevoRes.messageId);
-        return { success: true, provider: 'brevo', id: brevoRes.messageId };
-      }
-    } catch (err) {
-      console.warn('[Brevo Welcome Error]:', err);
-    }
-  }
-
-  // 2. Mailgun
-  const mg = getMailgunClient();
-  if (mg) {
-    try {
-      const response = await mg.client.messages.create(mg.domain, {
-        from: mg.from,
-        to: [user.email],
-        subject,
-        html,
-        text,
-      });
-
-      console.log('[Mailgun] Welcome email sent:', response.id);
-      return { success: true, provider: 'mailgun', id: response.id };
-    } catch (error: any) {
-      console.warn(`[Mailgun] Welcome email failed (${error.message}), falling back to Nodemailer...`);
-    }
-  }
-
-  // 3. Nodemailer Fallback
-  return sendEmailWithNodemailer({
+  return dispatchEmail({
     to: user.email,
+    fullName: name,
     subject,
     html,
     text,

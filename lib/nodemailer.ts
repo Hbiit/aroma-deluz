@@ -27,14 +27,14 @@ let etherealTransporterPromise: Promise<Transporter> | null = null;
  */
 export function isNodemailerConfigured(): boolean {
   const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER || process.env.GMAIL_USER;
+  const user = process.env.SMTP_USER || process.env.GMAIL_USER || 'testerdefault8@gmail.com';
   const pass = process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.GMAIL_APP_PASSWORD;
 
-  return Boolean(user && pass && (host || process.env.GMAIL_USER));
+  return Boolean(user && pass && (host || process.env.GMAIL_USER || user.includes('@gmail.com')));
 }
 
 /**
- * Create or resolve Nodemailer transporter (Production SMTP or Development Ethereal/Local)
+ * Create or resolve Nodemailer transporter (Production Gmail SMTP or Development Ethereal/Local)
  */
 async function getTransporter(): Promise<{
   transporter: Transporter;
@@ -44,21 +44,22 @@ async function getTransporter(): Promise<{
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
   const secure = process.env.SMTP_SECURE === 'true' || port === 465;
-  const user = process.env.SMTP_USER || process.env.GMAIL_USER;
-  const pass = process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.GMAIL_APP_PASSWORD;
+  const user = process.env.GMAIL_USER || process.env.SMTP_USER || 'testerdefault8@gmail.com';
+  const pass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
 
   const defaultFrom =
     process.env.SMTP_FROM ||
-    process.env.MAILGUN_FROM ||
-    '"Aroma De Luz" <orders@aromadeluz.com>';
+    (user ? `"Aroma De Luz" <${user}>` : '"Aroma De Luz" <testerdefault8@gmail.com>');
 
-  // 1. Gmail service shorthand
-  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD && !host) {
+  // 1. Direct Gmail service (using Google App Password)
+  const isGmail = (user && user.includes('@gmail.com')) || (!host && process.env.GMAIL_USER);
+  if (isGmail && pass && !host) {
+    const cleanPass = pass.replace(/\s+/g, '');
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
+        user,
+        pass: cleanPass,
       },
       tls: {
         rejectUnauthorized: false,
@@ -66,7 +67,7 @@ async function getTransporter(): Promise<{
     });
     return {
       transporter,
-      from: process.env.SMTP_FROM || `"Aroma De Luz" <${process.env.GMAIL_USER}>`,
+      from: defaultFrom,
       isEthereal: false,
     };
   }
@@ -92,7 +93,7 @@ async function getTransporter(): Promise<{
     };
   }
 
-  // 3. Fallback: Ethereal test account (for instant zero-config testing)
+  // 3. Fallback: Ethereal test account (for instant zero-config testing when no password is set)
   if (!etherealTransporterPromise) {
     etherealTransporterPromise = (async () => {
       try {

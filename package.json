@@ -12,7 +12,8 @@
     "integrations:setup": "node scripts/automate-integrations.mjs",
     "test:paystack": "node scripts/test-paystack.mjs",
     "test:email": "node scripts/test-email.mjs",
-    "test:brevo": "node scripts/test-brevo.mjs"
+    "test:brevo": "node scripts/test-brevo.mjs",
+    "test:nodemailer": "node scripts/test-nodemailer.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
