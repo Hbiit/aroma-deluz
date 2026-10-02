@@ -42,53 +42,71 @@ function SuccessContent() {
     if (hasVerifiedRef.current) return;
     hasVerifiedRef.current = true;
 
-    // 2. Server-side verification with Paystack
-    async function verifyOrder() {
-      try {
-        setVerifying(true);
-        const res = await fetch(`/api/orders/${encodeURIComponent(ref)}`);
-        const data = await res.json();
+    const maxAttempts = 5;
 
-        if (res.ok && data.verified) {
-          setVerified(true);
-          if (data.order) {
-            setOrder(data.order);
-            if (data.items && data.items.length > 0) {
-              setOrderItems(data.items);
+    // 2. Server-side verification with Paystack (with automatic retry polling)
+    async function verifyOrder() {
+      setVerifying(true);
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const res = await fetch(`/api/orders/${encodeURIComponent(ref)}`);
+          const data = await res.json();
+
+          if (res.ok && data.verified) {
+            setVerified(true);
+            if (data.order) {
+              setOrder(data.order);
+              if (data.items && data.items.length > 0) {
+                setOrderItems(data.items);
+              }
+            }
+            // Clear cart now that payment is confirmed
+            clearCart();
+            try {
+              sessionStorage.removeItem('last_order');
+            } catch {}
+            setVerifying(false);
+            return;
+          }
+
+          // If status is ongoing or pending on Paystack, retry in 2.5 seconds
+          if (attempt < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+            continue;
+          }
+
+          if (res.ok && data.verified === false) {
+            setVerified(false);
+            setErrorMessage(
+              data.message || 'Payment has not been completed or was cancelled.'
+            );
+          } else {
+            if (localOrder || isDemoQuery) {
+              setVerified(true);
+              clearCart();
+            } else {
+              setVerified(false);
+              setErrorMessage(data.error || 'Unable to locate order record.');
             }
           }
-          // Clear cart now that payment is confirmed
-          clearCart();
-          try {
-            sessionStorage.removeItem('last_order');
-          } catch {}
-        } else if (res.ok && data.verified === false) {
-          setVerified(false);
-          setErrorMessage(
-            data.message || 'Payment has not been completed or was cancelled.'
-          );
-        } else {
-          // If order not found in DB (e.g. offline demo session)
+        } catch (err: any) {
+          console.error(`Verification attempt ${attempt} error:`, err);
+          if (attempt < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+            continue;
+          }
           if (localOrder || isDemoQuery) {
             setVerified(true);
             clearCart();
           } else {
             setVerified(false);
-            setErrorMessage(data.error || 'Unable to locate order record.');
+            setErrorMessage('Network error while verifying payment.');
           }
         }
-      } catch (err: any) {
-        console.error('Verification error:', err);
-        if (localOrder || isDemoQuery) {
-          setVerified(true);
-          clearCart();
-        } else {
-          setVerified(false);
-          setErrorMessage('Network error while verifying payment.');
-        }
-      } finally {
-        setVerifying(false);
       }
+
+      setVerifying(false);
     }
 
     verifyOrder();
