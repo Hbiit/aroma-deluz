@@ -69,25 +69,35 @@ export default async function HomePage() {
             </div>
 
             <div className="animate-fade-in-up flex justify-center lg:justify-end order-first lg:order-last">
-              <div className="relative group rounded-2xl overflow-hidden p-2 bg-gradient-to-b from-gold/40 via-purple-deep/30 to-gold/20 shadow-[0_30px_90px_rgba(0,0,0,0.5)] max-w-[540px]">
+              <Link
+                href="/products/velvet-lavender-amber-candle"
+                className="block relative group rounded-2xl overflow-hidden p-2 bg-gradient-to-b from-gold/40 via-purple-deep/30 to-gold/20 shadow-[0_30px_90px_rgba(0,0,0,0.5)] max-w-[540px] cursor-pointer hover:shadow-[0_35px_100px_rgba(201,164,92,0.3)] transition-all duration-500"
+              >
                 <Image
                   src="/website-bg.jpg"
-                  alt="Aroma De Luz luxury scented candle with amber glass and gold logo"
+                  alt="Velvet Lavender & Amber Candle"
                   width={600}
                   height={600}
-                  className="rounded-xl object-cover w-full h-[460px] md:h-[520px] transition-transform duration-700 group-hover:scale-[1.02]"
+                  className="rounded-xl object-cover w-full h-[460px] md:h-[520px] transition-transform duration-700 group-hover:scale-[1.03]"
                   priority
                 />
-                <div className="absolute bottom-6 left-6 right-6 bg-purple-darkest/90 backdrop-blur-md p-4 rounded-lg border border-gold/30 flex items-center justify-between">
+                <div className="absolute bottom-6 left-6 right-6 bg-purple-darkest/90 backdrop-blur-md p-4 rounded-lg border border-gold/30 flex items-center justify-between group-hover:border-gold transition-all duration-300">
                   <div>
-                    <p className="text-[0.65rem] tracking-[0.25em] uppercase text-gold">Featured Signature</p>
-                    <p className="font-serif text-lg text-white font-semibold">Velvet Lavender & Amber Candle</p>
+                    <p className="text-[0.65rem] tracking-[0.25em] uppercase text-gold flex items-center gap-2">
+                      <span>Featured Signature</span>
+                      <span className="text-[0.65rem] bg-gold/20 text-gold px-2 py-0.5 rounded tracking-wider font-semibold">
+                        View Product →
+                      </span>
+                    </p>
+                    <p className="font-serif text-lg text-white font-semibold group-hover:text-gold-bright transition-colors">
+                      Velvet Lavender & Amber Candle
+                    </p>
                   </div>
-                  <span className="text-gold font-bold text-sm bg-gold/15 px-3 py-1.5 rounded border border-gold/30">
+                  <span className="text-gold font-bold text-sm bg-gold/15 px-3 py-1.5 rounded border border-gold/30 group-hover:bg-gold group-hover:text-purple-darkest transition-all">
                     ₦35,000
                   </span>
                 </div>
-              </div>
+              </Link>
             </div>
           </div>
         </div>
