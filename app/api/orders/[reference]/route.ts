@@ -136,60 +136,30 @@ export async function GET(
 
     const paystackData = paystackRes.data;
 
-    // Check if status is success and paid amount matches order total
-    if (
-      paystackData.status === 'success' &&
-      paystackData.amount >= order.total_kobo
-    ) {
+    // Check if status is success on Paystack
+    if (paystackData.status === 'success') {
       // Mark order as paid
       if (supabase) {
         const { data: updated } = await supabase
           .from('orders')
           .update({
             status: 'paid',
+            note: order.note ? `${order.note} | Confirmed via Paystack` : 'Paid via Paystack',
           })
           .eq('reference', reference)
-          .select()
+          .select('*, order_items(*)')
           .single();
-        if (updated) order = { ...updated, order_items: items };
+        if (updated) {
+          order = updated;
+          items = updated.order_items || items;
+        }
       } else {
         memoryStore.updateOrderStatus(reference, 'paid');
         order.status = 'paid';
       }
 
-      // Send Mailgun order confirmation email ONCE
-      if (!order.email_sent_at) {
-        try {
-          const { sendOrderConfirmationEmail } = await import('@/lib/mailgun');
-          await sendOrderConfirmationEmail({
-            reference: order.reference,
-            fullName: order.full_name || 'Valued Client',
-            email: order.email,
-            phone: order.phone,
-            address: order.address || '',
-            city: order.city || 'Lagos',
-            state: order.state || 'Lagos',
-            items: items.map((i: any) => ({
-              name: i.name,
-              qty: i.quantity,
-              price_kobo: i.unit_price_kobo,
-            })),
-            totalKobo: order.total_kobo,
-          });
-
-          // Guard against duplicate emails
-          if (supabase) {
-            await supabase
-              .from('orders')
-              .update({ email_sent_at: new Date().toISOString() })
-              .eq('reference', reference);
-          } else {
-            memoryStore.markEmailSent(reference);
-          }
-        } catch (emailErr) {
-          console.error('[Mailgun Order Email Error]:', emailErr);
-        }
-      }
+      // Send order confirmation email once
+      await triggerConfirmationEmail();
 
       return NextResponse.json({
         success: true,
