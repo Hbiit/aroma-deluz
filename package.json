@@ -9,7 +9,10 @@
     "lint": "eslint",
     "db:setup": "node scripts/setup-supabase.mjs",
     "db:seed": "node scripts/setup-supabase.mjs",
-    "integrations:setup": "node scripts/automate-integrations.mjs"
+    "integrations:setup": "node scripts/automate-integrations.mjs",
+    "test:paystack": "node scripts/test-paystack.mjs",
+    "test:email": "node scripts/test-email.mjs",
+    "test:brevo": "node scripts/test-brevo.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -17,12 +20,14 @@
     "form-data": "^4.0.6",
     "mailgun.js": "^14.0.1",
     "next": "16.3.8",
+    "nodemailer": "^10.0.13",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

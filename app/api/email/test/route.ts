@@ -44,12 +44,28 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
+  const hasBrevo = Boolean(process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY);
+  const hasMailgun = Boolean(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
+  const hasSmtp = Boolean(
+    (process.env.SMTP_USER && process.env.SMTP_PASS) ||
+    (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD)
+  );
+
   return NextResponse.json({
-    status: 'Mailgun test endpoint ready. Send POST with { email: "your-email@example.com" } to dispatch a test email.',
-    configured: {
-      hasApiKey: !!process.env.MAILGUN_API_KEY,
-      hasDomain: !!process.env.MAILGUN_DOMAIN,
-      from: process.env.MAILGUN_FROM || 'default',
+    status: 'Email test endpoint ready. Send POST with { email: "your-email@example.com" } to dispatch a test email.',
+    providers: {
+      brevo: {
+        configured: hasBrevo,
+        senderEmail: process.env.BREVO_SENDER_EMAIL || 'orders@aromadeluz.com',
+      },
+      mailgun: {
+        configured: hasMailgun,
+        domain: process.env.MAILGUN_DOMAIN || null,
+      },
+      nodemailerFallback: {
+        configured: hasSmtp,
+        mode: hasSmtp ? 'production-smtp' : 'ephemeral-ethereal-test',
+      },
     },
   });
 }

@@ -1,20 +1,103 @@
 // Aroma Deluz — Checkout API Route
+// Server-side cart re-pricing, order creation, and Paystack payment initialization
+
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { memoryStore } from '@/lib/store';
+import { initializePaystackTransaction, isPaystackConfigured } from '@/lib/paystack';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { reference, userId, email, fullName, phone, address, city, state, note, items, totalKobo } = body;
+    const {
+      reference,
+      userId,
+      email,
+      fullName,
+      phone,
+      address,
+      city,
+      state,
+      note,
+      items,
+    } = body;
+
+    if (!email || !address || !items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        { error: 'Missing required order fields or empty cart' },
+        { status: 400 }
+      );
+    }
+
+    const orderRef =
+      reference ||
+      `AROMA-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`;
 
     const supabase = createServiceRoleClient() || (await createServerSupabaseClient());
 
+    // 1. Re-price cart from server/database to ensure integrity
+    let calculatedItemsSubtotalKobo = 0;
+    const verifiedOrderItems: Array<{
+      id: string;
+      product_id: string | null;
+      name: string;
+      price_kobo: number;
+      quantity: number;
+    }> = [];
+
+    // Fetch products from Supabase or fallback memoryStore
+    let dbProducts: any[] = [];
     if (supabase) {
-      // 1. Insert order into Supabase
+      const { data } = await supabase.from('products').select('*');
+      if (data && data.length > 0) {
+        dbProducts = data;
+      }
+    }
+    if (dbProducts.length === 0) {
+      dbProducts = memoryStore.getProducts();
+    }
+
+    for (const item of items) {
+      const quantity = Math.max(1, parseInt(item.quantity || item.qty || 1, 10));
+      const matchedProduct = dbProducts.find(
+        (p) => p.id === item.id || p.slug === item.slug
+      );
+
+      const unitPriceKobo = matchedProduct
+        ? matchedProduct.price_kobo
+        : item.price_kobo || 4500000;
+
+      calculatedItemsSubtotalKobo += unitPriceKobo * quantity;
+
+      verifiedOrderItems.push({
+        id: matchedProduct ? matchedProduct.id : item.id,
+        product_id: matchedProduct ? matchedProduct.id : null,
+        name: matchedProduct ? matchedProduct.name : item.name,
+        price_kobo: unitPriceKobo,
+        quantity,
+      });
+    }
+
+    // Free delivery over ₦150,000 (15,000,000 kobo); ₦4,500 Lagos, ₦7,500 elsewhere
+    const deliveryKobo =
+      calculatedItemsSubtotalKobo >= 15000000
+        ? 0
+        : state === 'Lagos'
+        ? 450000
+        : 750000;
+
+    const grandTotalKobo = calculatedItemsSubtotalKobo + deliveryKobo;
+
+    const paystackActive = isPaystackConfigured();
+
+    // 2. Insert order record into database or memory store
+    let createdOrderId = orderRef;
+
+    if (supabase) {
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
-          reference,
+          reference: orderRef,
           user_id: userId || null,
           email,
           full_name: fullName,
@@ -23,18 +106,21 @@ export async function POST(request: Request) {
           city,
           state,
           note,
-          status: 'paid', // Mark as paid for demo/test orders
-          total_kobo: totalKobo,
-          demo: !process.env.PAYSTACK_SECRET_KEY,
+          status: paystackActive ? 'pending' : 'paid',
+          total_kobo: grandTotalKobo,
+          demo: !paystackActive,
         })
         .select()
         .single();
 
-      if (!orderError && orderData && items && items.length > 0) {
-        // 2. Insert order items
-        const orderItemsPayload = items.map((item: any) => ({
+      if (orderError) {
+        console.error('Supabase order creation error:', orderError);
+      } else if (orderData) {
+        createdOrderId = orderData.id;
+
+        const orderItemsPayload = verifiedOrderItems.map((item) => ({
           order_id: orderData.id,
-          product_id: item.id.length > 30 ? item.id : null,
+          product_id: item.product_id && item.product_id.length > 30 ? item.product_id : null,
           name: item.name,
           unit_price_kobo: item.price_kobo,
           quantity: item.quantity,
@@ -42,29 +128,125 @@ export async function POST(request: Request) {
 
         await supabase.from('order_items').insert(orderItemsPayload);
       }
+    } else {
+      // In-memory store fallback
+      memoryStore.createOrder(
+        {
+          id: orderRef,
+          reference: orderRef,
+          user_id: userId || null,
+          email,
+          full_name: fullName,
+          phone,
+          address,
+          city,
+          state,
+          note,
+          status: paystackActive ? 'pending' : 'paid',
+          total_kobo: grandTotalKobo,
+          paystack_authorization_url: null,
+          paystack_access_code: null,
+          demo: !paystackActive,
+          email_sent_at: null,
+          created_at: new Date().toISOString(),
+        },
+        verifiedOrderItems.map((item) => ({
+          id: `item-${Date.now()}-${Math.random()}`,
+          order_id: orderRef,
+          product_id: item.product_id,
+          name: item.name,
+          unit_price_kobo: item.price_kobo,
+          quantity: item.quantity,
+        }))
+      );
     }
 
-    // 3. Trigger Mailgun Order Confirmation Email asynchronously
+    // 3. Handle Paystack Hosted Checkout
+    if (paystackActive) {
+      const origin = request.headers.get('origin');
+      const host = request.headers.get('host');
+      const proto =
+        request.headers.get('x-forwarded-proto') ||
+        (host?.includes('localhost') ? 'http' : 'https');
+
+      const siteUrl =
+        origin ||
+        (host ? `${proto}://${host}` : null) ||
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        'http://localhost:3000';
+
+      const callbackUrl = `${siteUrl.replace(/\/$/, '')}/checkout/success`;
+
+      const paystackRes = await initializePaystackTransaction({
+        email,
+        amountKobo: grandTotalKobo,
+        reference: orderRef,
+        callbackUrl,
+        metadata: {
+          order_id: createdOrderId,
+          customer_name: fullName,
+          phone,
+          delivery_address: `${address}, ${city}, ${state}`,
+          items_count: verifiedOrderItems.reduce((acc, i) => acc + i.quantity, 0),
+        },
+      });
+
+      if (!paystackRes.success || !paystackRes.authorizationUrl) {
+        console.error('Paystack initialization failed:', paystackRes.error);
+        return NextResponse.json(
+          { error: paystackRes.error || 'Failed to initialize Paystack checkout' },
+          { status: 502 }
+        );
+      }
+
+      // Update order record with authorization details
+      if (supabase) {
+        await supabase
+          .from('orders')
+          .update({
+            paystack_authorization_url: paystackRes.authorizationUrl,
+            paystack_access_code: paystackRes.accessCode || null,
+          })
+          .eq('reference', orderRef);
+      }
+
+      return NextResponse.json({
+        success: true,
+        reference: orderRef,
+        authorizationUrl: paystackRes.authorizationUrl,
+        accessCode: paystackRes.accessCode,
+        demo: false,
+      });
+    }
+
+    // 4. Demo Mode Fallback (when PAYSTACK_SECRET_KEY is absent)
     try {
       const { sendOrderConfirmationEmail } = await import('@/lib/mailgun');
       await sendOrderConfirmationEmail({
-        reference,
-        fullName,
+        reference: orderRef,
+        fullName: fullName || 'Valued Client',
         email,
         phone,
         address,
         city,
         state,
-        items,
-        totalKobo,
+        items: verifiedOrderItems,
+        totalKobo: grandTotalKobo,
       });
     } catch (emailErr) {
-      console.error('Failed to trigger order confirmation email:', emailErr);
+      console.warn('Demo order confirmation email skipped or failed:', emailErr);
     }
 
-    return NextResponse.json({ success: true, reference });
+    return NextResponse.json({
+      success: true,
+      reference: orderRef,
+      demo: true,
+    });
   } catch (error: any) {
     console.error('Checkout API error:', error);
-    return NextResponse.json({ error: error.message || 'Checkout failed' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Checkout failed' },
+      { status: 500 }
+    );
   }
 }

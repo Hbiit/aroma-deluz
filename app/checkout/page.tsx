@@ -26,6 +26,7 @@ export default function CheckoutPage() {
   const [state, setState] = useState('Lagos');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Sync user details if user loads after mount
   useEffect(() => {
@@ -44,11 +45,12 @@ export default function CheckoutPage() {
     if (items.length === 0) return;
 
     setLoading(true);
+    setErrorMessage(null);
 
     try {
       const orderRef = 'AROMA-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(Math.random() * 1000);
 
-      // Save order to API / Supabase
+      // Save order to API / Supabase & initialize Paystack
       const payload = {
         reference: orderRef,
         userId: user?.id,
@@ -63,27 +65,36 @@ export default function CheckoutPage() {
         totalKobo: grandTotalKobo,
       };
 
-      // Call checkout api or simulate
-      try {
-        await fetch('/api/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } catch {
-        // Fallback for offline/demo
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to initialize payment');
       }
 
-      // Store in session storage for receipt page
+      // Store in session storage for receipt page fallback
       sessionStorage.setItem('last_order', JSON.stringify({
         ...payload,
         createdAt: new Date().toISOString(),
       }));
 
+      // If Paystack hosted checkout URL is returned, redirect to Paystack
+      if (data.authorizationUrl) {
+        window.location.href = data.authorizationUrl;
+        return;
+      }
+
+      // Demo mode fallback when PAYSTACK_SECRET_KEY is absent
       clearCart();
-      router.push(`/checkout/success?ref=${orderRef}`);
-    } catch {
-      alert('Failed to place order. Please try again.');
+      router.push(`/checkout/success?ref=${orderRef}&demo=true`);
+    } catch (err: any) {
+      console.error('Checkout error:', err);
+      setErrorMessage(err.message || 'Payment initialization failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -349,6 +360,13 @@ export default function CheckoutPage() {
                 {formatNaira(grandTotalKobo)}
               </span>
             </div>
+
+            {errorMessage && (
+              <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2 animate-fade-in">
+                <span className="font-bold text-rose-600">✕</span>
+                <span className="leading-relaxed">{errorMessage}</span>
+              </div>
+            )}
 
             {/* Place Order CTA */}
             <button

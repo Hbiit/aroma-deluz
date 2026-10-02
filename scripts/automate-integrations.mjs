@@ -65,14 +65,20 @@ const googleClientSecret = params.googleClientSecret || process.env.GOOGLE_CLIEN
 const mailgunApiKey = params.mailgunApiKey || process.env.MAILGUN_API_KEY || getEnvVar('MAILGUN_API_KEY');
 const mailgunDomain = params.mailgunDomain || process.env.MAILGUN_DOMAIN || getEnvVar('MAILGUN_DOMAIN');
 const mailgunFrom = params.mailgunFrom || process.env.MAILGUN_FROM || getEnvVar('MAILGUN_FROM') || 'Aroma De Luz <orders@mg.aromadeluz.com>';
+const brevoApiKey = params.brevoApiKey || process.env.BREVO_API_KEY || getEnvVar('BREVO_API_KEY');
+const brevoSenderEmail = params.brevoSenderEmail || process.env.BREVO_SENDER_EMAIL || getEnvVar('BREVO_SENDER_EMAIL');
+const paystackSecretKey = params.paystackSecretKey || process.env.PAYSTACK_SECRET_KEY || getEnvVar('PAYSTACK_SECRET_KEY');
 const testEmail = params.testEmail || params.email;
 
 console.log('📋 Validating parameters:');
 console.log(`- Google Client ID: ${googleClientId ? '✓ Provided' : '✗ Not provided'}`);
 console.log(`- Google Client Secret: ${googleClientSecret ? '✓ Provided' : '✗ Not provided'}`);
+console.log(`- Brevo API Key: ${brevoApiKey ? '✓ Provided' : '✗ Not provided'}`);
+console.log(`- Brevo Sender Email: ${brevoSenderEmail ? brevoSenderEmail : 'Not set (defaults to orders@aromadeluz.com)'}`);
 console.log(`- Mailgun API Key: ${mailgunApiKey ? '✓ Provided' : '✗ Not provided'}`);
 console.log(`- Mailgun Domain: ${mailgunDomain ? '✓ Provided' : '✗ Not provided'}`);
 console.log(`- Mailgun From: ${mailgunFrom}`);
+console.log(`- Paystack Secret Key: ${paystackSecretKey ? '✓ Provided' : '✗ Not provided'}`);
 if (testEmail) {
   console.log(`- Test Email Target: ${testEmail}`);
 }
@@ -81,6 +87,18 @@ console.log('');
 // 3. Update .env.local
 let updated = false;
 
+if (brevoApiKey) {
+  setEnvVar('BREVO_API_KEY', brevoApiKey);
+  updated = true;
+}
+if (brevoSenderEmail) {
+  setEnvVar('BREVO_SENDER_EMAIL', brevoSenderEmail);
+  updated = true;
+}
+if (paystackSecretKey) {
+  setEnvVar('PAYSTACK_SECRET_KEY', paystackSecretKey);
+  updated = true;
+}
 if (mailgunApiKey) {
   setEnvVar('MAILGUN_API_KEY', mailgunApiKey);
   updated = true;
@@ -132,6 +150,9 @@ if (shouldPushVercel) {
   if (mailgunFrom) pushVercelVar('MAILGUN_FROM', mailgunFrom);
   if (googleClientId) pushVercelVar('GOOGLE_CLIENT_ID', googleClientId);
   if (googleClientSecret) pushVercelVar('GOOGLE_CLIENT_SECRET', googleClientSecret);
+  if (paystackSecretKey) pushVercelVar('PAYSTACK_SECRET_KEY', paystackSecretKey);
+  if (brevoApiKey) pushVercelVar('BREVO_API_KEY', brevoApiKey);
+  if (brevoSenderEmail) pushVercelVar('BREVO_SENDER_EMAIL', brevoSenderEmail);
 } else {
   console.log('\n💡 Tip: To sync variables directly to Vercel production via CLI, run with --vercel=true');
   console.log('Or add them in the Vercel Dashboard: Settings → Environment Variables.');

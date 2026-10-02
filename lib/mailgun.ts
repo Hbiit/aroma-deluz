@@ -1,6 +1,8 @@
 import FormData from 'form-data';
 import Mailgun from 'mailgun.js';
 import { formatNaira } from '@/lib/utils';
+import { sendEmailWithNodemailer } from '@/lib/nodemailer';
+import { sendEmailWithBrevo, isBrevoConfigured } from '@/lib/brevo';
 
 // Initialize Mailgun client
 function getMailgunClient() {
@@ -41,15 +43,9 @@ export interface OrderEmailData {
 }
 
 /**
- * Send luxury branded order confirmation email via Mailgun
+ * Send luxury branded order confirmation email via Brevo / Mailgun / Nodemailer
  */
 export async function sendOrderConfirmationEmail(order: OrderEmailData) {
-  const mg = getMailgunClient();
-  if (!mg) {
-    console.warn('[Mailgun] Skipping email: MAILGUN_API_KEY or MAILGUN_DOMAIN not configured in environment.');
-    return { success: false, reason: 'unconfigured' };
-  }
-
   const itemsHtml = order.items
     .map((item) => {
       const quantity = item.qty || item.quantity || 1;
@@ -145,59 +141,133 @@ export async function sendOrderConfirmationEmail(order: OrderEmailData) {
     </html>
   `;
 
-  try {
-    const response = await mg.client.messages.create(mg.domain, {
-      from: mg.from,
-      to: [order.email],
-      subject: `Order Confirmation — ${order.reference} | Aroma De Luz`,
-      html,
-      text: `Thank you for your order, ${order.fullName}!\nReference: ${order.reference}\nTotal: ${formatNaira(order.totalKobo)}\n\nYour items:\n${order.items.map((i) => `- ${i.name} (x${i.qty || i.quantity || 1}): ${formatNaira(i.price_kobo * (i.qty || i.quantity || 1))}`).join('\n')}\n\nDelivery to: ${order.address}, ${order.city}, ${order.state}`,
-    });
+  const subject = `Order Confirmation — ${order.reference} | Aroma De Luz`;
+  const text = `Thank you for your order, ${order.fullName}!\nReference: ${order.reference}\nTotal: ${formatNaira(order.totalKobo)}\n\nYour items:\n${order.items.map((i) => `- ${i.name} (x${i.qty || i.quantity || 1}): ${formatNaira(i.price_kobo * (i.qty || i.quantity || 1))}`).join('\n')}\n\nDelivery to: ${order.address}, ${order.city}, ${order.state}`;
 
-    console.log('[Mailgun] Order confirmation sent:', response.id);
-    return { success: true, id: response.id };
-  } catch (error) {
-    console.error('[Mailgun] Error sending order confirmation email:', error);
-    return { success: false, error };
+  // 1. Primary Option: Brevo (if configured)
+  if (isBrevoConfigured()) {
+    try {
+      const brevoRes = await sendEmailWithBrevo({
+        to: [{ email: order.email, name: order.fullName }],
+        subject,
+        html,
+        text,
+      });
+
+      if (brevoRes.success) {
+        console.log('[Brevo] Order confirmation sent:', brevoRes.messageId);
+        return { success: true, provider: 'brevo', id: brevoRes.messageId };
+      }
+      console.warn('[Brevo] Failed, trying fallback:', brevoRes.error);
+    } catch (brevoErr) {
+      console.warn('[Brevo] Exception, trying fallback:', brevoErr);
+    }
   }
-}
 
-/**
- * Send concierge inquiry email via Mailgun
- */
-export async function sendContactInquiryEmail(data: { name: string; email: string; subject: string; message: string }) {
+  // 2. Secondary Option: Mailgun (if configured)
   const mg = getMailgunClient();
-  if (!mg) {
-    console.warn('[Mailgun] Skipping contact email: Mailgun not configured.');
-    return { success: false, reason: 'unconfigured' };
+  if (mg) {
+    try {
+      const response = await mg.client.messages.create(mg.domain, {
+        from: mg.from,
+        to: [order.email],
+        subject,
+        html,
+        text,
+      });
+
+      console.log('[Mailgun] Order confirmation sent:', response.id);
+      return { success: true, provider: 'mailgun', id: response.id };
+    } catch (error: any) {
+      console.warn(
+        `[Mailgun] Delivery failed (${error.message || 'unknown error'}), falling back to Nodemailer...`
+      );
+    }
   }
 
-  try {
-    const response = await mg.client.messages.create(mg.domain, {
-      from: mg.from,
-      to: [process.env.CONCIERGE_EMAIL || mg.from],
-      replyTo: data.email,
-      subject: `[Concierge Inquiry] ${data.subject} — ${data.name}`,
-      text: `Inquiry from: ${data.name} (${data.email})\n\nSubject: ${data.subject}\n\nMessage:\n${data.message}`,
-    });
-
-    return { success: true, id: response.id };
-  } catch (error) {
-    console.error('[Mailgun] Error sending contact email:', error);
-    return { success: false, error };
-  }
+  // 3. Tertiary Option: Nodemailer Fallback
+  return sendEmailWithNodemailer({
+    to: order.email,
+    subject,
+    html,
+    text,
+  });
 }
 
 /**
- * Send luxury branded welcome email to newly registered users
+ * Send concierge inquiry email via Brevo / Mailgun / Nodemailer
+ */
+export async function sendContactInquiryEmail(data: {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+}) {
+  const emailSubject = `[Concierge Inquiry] ${data.subject} — ${data.name}`;
+  const text = `Inquiry from: ${data.name} (${data.email})\n\nSubject: ${data.subject}\n\nMessage:\n${data.message}`;
+  const html = `
+    <div style="font-family: Georgia, serif; background-color: #2d1229; color: #fdfcf9; padding: 24px; border-radius: 8px;">
+      <h2 style="color: #c9a45c;">Aroma De Luz — Atelier Concierge Inquiry</h2>
+      <p><strong>From:</strong> ${data.name} (&lt;${data.email}&gt;)</p>
+      <p><strong>Subject:</strong> ${data.subject}</p>
+      <hr style="border-color: #c9a45c40; margin: 16px 0;" />
+      <div style="white-space: pre-line; color: #d0c8cf; line-height: 1.6;">${data.message}</div>
+    </div>
+  `;
+
+  const recipient = process.env.CONCIERGE_EMAIL || 'concierge@aromadeluz.com';
+
+  // 1. Brevo
+  if (isBrevoConfigured()) {
+    try {
+      const brevoRes = await sendEmailWithBrevo({
+        to: [{ email: recipient, name: 'Aroma De Luz Concierge' }],
+        replyTo: { email: data.email, name: data.name },
+        subject: emailSubject,
+        html,
+        text,
+      });
+      if (brevoRes.success) {
+        return { success: true, provider: 'brevo', id: brevoRes.messageId };
+      }
+    } catch (err) {
+      console.warn('[Brevo Contact Error]:', err);
+    }
+  }
+
+  // 2. Mailgun
+  const mg = getMailgunClient();
+  if (mg) {
+    try {
+      const response = await mg.client.messages.create(mg.domain, {
+        from: mg.from,
+        to: [recipient],
+        replyTo: data.email,
+        subject: emailSubject,
+        text,
+        html,
+      });
+
+      return { success: true, provider: 'mailgun', id: response.id };
+    } catch (error: any) {
+      console.warn(`[Mailgun] Contact inquiry failed (${error.message}), falling back to Nodemailer...`);
+    }
+  }
+
+  // 3. Nodemailer Fallback
+  return sendEmailWithNodemailer({
+    to: recipient,
+    replyTo: data.email,
+    subject: emailSubject,
+    text,
+    html,
+  });
+}
+
+/**
+ * Send luxury branded welcome email to newly registered users via Brevo / Mailgun / Nodemailer
  */
 export async function sendWelcomeEmail(user: { email: string; fullName?: string }) {
-  const mg = getMailgunClient();
-  if (!mg) {
-    console.warn('[Mailgun] Skipping welcome email: Mailgun not configured.');
-    return { success: false, reason: 'unconfigured' };
-  }
-
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://aroma-deluz.vercel.app';
   const name = user.fullName || 'Connoisseur';
 
@@ -266,20 +336,53 @@ export async function sendWelcomeEmail(user: { email: string; fullName?: string 
     </html>
   `;
 
-  try {
-    const response = await mg.client.messages.create(mg.domain, {
-      from: mg.from,
-      to: [user.email],
-      subject: `✨ Welcome to Aroma De Luz, ${name}`,
-      html,
-      text: `Bienvenue to Aroma De Luz, ${name}!\n\nWe are delighted to welcome you into our circle of connoisseurs. Explore hand-poured soy candles and haute parfumerie at: ${siteUrl}/products\n\nWarm regards,\nThe Aroma De Luz Maison`,
-    });
+  const subject = `✨ Welcome to Aroma De Luz, ${name}`;
+  const text = `Bienvenue to Aroma De Luz, ${name}!\n\nWe are delighted to welcome you into our circle of connoisseurs. Explore hand-poured soy candles and haute parfumerie at: ${siteUrl}/products\n\nWarm regards,\nThe Aroma De Luz Maison`;
 
-    console.log('[Mailgun] Welcome email sent:', response.id);
-    return { success: true, id: response.id };
-  } catch (error) {
-    console.error('[Mailgun] Error sending welcome email:', error);
-    return { success: false, error };
+  // 1. Brevo
+  if (isBrevoConfigured()) {
+    try {
+      const brevoRes = await sendEmailWithBrevo({
+        to: [{ email: user.email, name }],
+        subject,
+        html,
+        text,
+      });
+      if (brevoRes.success) {
+        console.log('[Brevo] Welcome email sent:', brevoRes.messageId);
+        return { success: true, provider: 'brevo', id: brevoRes.messageId };
+      }
+    } catch (err) {
+      console.warn('[Brevo Welcome Error]:', err);
+    }
   }
+
+  // 2. Mailgun
+  const mg = getMailgunClient();
+  if (mg) {
+    try {
+      const response = await mg.client.messages.create(mg.domain, {
+        from: mg.from,
+        to: [user.email],
+        subject,
+        html,
+        text,
+      });
+
+      console.log('[Mailgun] Welcome email sent:', response.id);
+      return { success: true, provider: 'mailgun', id: response.id };
+    } catch (error: any) {
+      console.warn(`[Mailgun] Welcome email failed (${error.message}), falling back to Nodemailer...`);
+    }
+  }
+
+  // 3. Nodemailer Fallback
+  return sendEmailWithNodemailer({
+    to: user.email,
+    subject,
+    html,
+    text,
+  });
 }
 
+export { sendEmailWithNodemailer, sendEmailWithBrevo, isBrevoConfigured };
