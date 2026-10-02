@@ -27,7 +27,7 @@ export default function CheckoutPage() {
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'paypal'>('paystack');
+  const [paymentMethod, setPaymentMethod] = useState<'demo' | 'paystack' | 'paypal'>('demo');
   const [paypalModalOpen, setPaypalModalOpen] = useState(false);
   const [paypalProcessing, setPaypalProcessing] = useState(false);
   const [currentOrderRef, setCurrentOrderRef] = useState<string | null>(null);
@@ -60,7 +60,7 @@ export default function CheckoutPage() {
       const orderRef = 'AROMA-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(Math.random() * 1000);
       setCurrentOrderRef(orderRef);
 
-      // Save order to API / Supabase & initialize checkout
+      // Save order to API / Supabase in Demo Mode
       const payload = {
         reference: orderRef,
         userId: user?.id,
@@ -73,7 +73,8 @@ export default function CheckoutPage() {
         note,
         items,
         totalKobo: grandTotalKobo,
-        paymentMethod,
+        paymentMethod: 'demo',
+        isDemo: true,
       };
 
       const res = await fetch('/api/checkout', {
@@ -94,29 +95,25 @@ export default function CheckoutPage() {
         createdAt: new Date().toISOString(),
       }));
 
-      // If PayPal was chosen, open the PayPal confirmation interface
-      if (paymentMethod === 'paypal') {
-        setPaypalModalOpen(true);
-        setLoading(false);
-        return;
-      }
-
-      // If Paystack hosted checkout URL is returned, redirect to Paystack
-      if (data.authorizationUrl) {
-        window.location.href = data.authorizationUrl;
-        return;
-      }
-
-      // Demo/Fallback mode when Paystack keys are inactive
+      // In Demo Mode: Immediately clear cart and transition to confirmation
       clearCart();
+      try {
+        localStorage.removeItem('aroma_guest_cart');
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('aroma_cart') || k === 'aroma_guest_cart')) {
+            localStorage.removeItem(k);
+          }
+        }
+        window.dispatchEvent(new Event('cart-cleared'));
+      } catch {}
+
       router.push(`/checkout/success?ref=${orderRef}&demo=true`);
     } catch (err: any) {
       console.error('Checkout error:', err);
       setErrorMessage(err.message || 'Payment initialization failed. Please try again.');
     } finally {
-      if (paymentMethod !== 'paypal') {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   };
 
@@ -333,81 +330,38 @@ export default function CheckoutPage() {
               />
             </div>
 
-            {/* Payment Method Selector */}
+            {/* Payment Method Selector — Demo Atelier Mode */}
             <div className="pt-4 border-t border-gold/15">
-              <h2 className="font-serif text-xl text-purple-ink font-semibold mb-3">
-                2. Select Payment Method
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Paystack Option */}
-                <div
-                  onClick={() => setPaymentMethod('paystack')}
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                    paymentMethod === 'paystack'
-                      ? 'border-gold bg-gold/10 shadow-sm'
-                      : 'border-gold/20 bg-white hover:border-gold/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                          paymentMethod === 'paystack'
-                            ? 'border-gold bg-purple-darkest'
-                            : 'border-purple-ink/30 bg-transparent'
-                        }`}
-                      >
-                        {paymentMethod === 'paystack' && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-gold" />
-                        )}
-                      </div>
-                      <strong className="text-xs text-purple-ink uppercase tracking-[0.08em] block">
-                        Paystack
-                      </strong>
-                    </div>
-                    <span className="text-[0.62rem] text-gold font-bold px-2 py-0.5 rounded bg-gold/15 border border-gold/30">
-                      Cards & Transfer
-                    </span>
-                  </div>
-                  <p className="text-[0.7rem] text-purple-ink/65 leading-relaxed pl-6.5">
-                    Debit Cards (Mastercard, Visa, Verve), Bank Transfer, Apple Pay, USSD.
-                  </p>
-                </div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-serif text-xl text-purple-ink font-semibold">
+                  2. Payment Method
+                </h2>
+                <span className="text-[0.65rem] uppercase tracking-[0.15em] font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-900 border border-amber-500/30">
+                  Demo Mode Active
+                </span>
+              </div>
 
-                {/* PayPal Option */}
-                <div
-                  onClick={() => setPaymentMethod('paypal')}
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                    paymentMethod === 'paypal'
-                      ? 'border-blue-600 bg-blue-50/60 shadow-sm'
-                      : 'border-gold/20 bg-white hover:border-blue-400'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                          paymentMethod === 'paypal'
-                            ? 'border-blue-600 bg-blue-600'
-                            : 'border-purple-ink/30 bg-transparent'
-                        }`}
-                      >
-                        {paymentMethod === 'paypal' && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                        )}
-                      </div>
-                      <strong className="text-xs text-blue-900 uppercase tracking-[0.08em] flex items-center gap-1">
-                        <span>PayPal</span>
-                        <span className="text-[0.7rem] text-blue-600">✦</span>
-                      </strong>
+              {/* Demo Payment Option Card */}
+              <div className="p-4 sm:p-5 rounded-xl border-2 border-gold bg-gold/10 shadow-sm space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-5 h-5 rounded-full border-2 border-gold bg-purple-darkest flex items-center justify-center">
+                      <div className="w-2 h-2 rounded-full bg-gold" />
                     </div>
-                    <span className="text-[0.62rem] text-blue-800 font-bold px-2 py-0.5 rounded bg-blue-100 border border-blue-200">
-                      Global & USD
-                    </span>
+                    <strong className="text-xs sm:text-sm text-purple-ink uppercase tracking-[0.08em] font-semibold">
+                      Demo Atelier Checkout (Instant Verification)
+                    </strong>
                   </div>
-                  <p className="text-[0.7rem] text-purple-ink/65 leading-relaxed pl-6.5">
-                    PayPal Balance, International Credit/Debit Cards (~${grandTotalUSD} USD).
-                  </p>
+                  <span className="text-[0.62rem] text-gold font-bold px-2.5 py-0.5 rounded bg-gold/20 border border-gold/40 uppercase tracking-wider">
+                    Zero Charge
+                  </span>
+                </div>
+                <p className="text-[0.72rem] text-purple-ink/75 leading-relaxed pl-7.5">
+                  Live payment gateways (Paystack & PayPal) are temporarily paused. Your order will be placed instantly in Demo Mode, reserved in our system at no charge, and an official order confirmation receipt will be emailed directly to <strong className="text-purple-ink">{email || 'your email'}</strong>.
+                </p>
+                <div className="pl-7.5 pt-1 flex items-center gap-2 text-[0.68rem] text-emerald-800 font-medium">
+                  <span className="text-emerald-600 font-bold">✓</span>
+                  <span>Instant luxury reservation & automated confirmation receipt</span>
                 </div>
               </div>
             </div>
@@ -475,11 +429,9 @@ export default function CheckoutPage() {
                 <span className="font-serif text-2xl font-bold text-purple-deep block">
                   {formatNaira(grandTotalKobo)}
                 </span>
-                {paymentMethod === 'paypal' && (
-                  <span className="text-[0.72rem] text-blue-700 font-medium">
-                    Approx. ${grandTotalUSD} USD
-                  </span>
-                )}
+                <span className="text-[0.72rem] text-amber-800 font-medium">
+                  ✦ Demo Order (No Charge) ✦
+                </span>
               </div>
             </div>
 
@@ -494,33 +446,23 @@ export default function CheckoutPage() {
             <button
               type="submit"
               disabled={loading}
-              className={`w-full py-4 px-6 font-semibold text-xs tracking-[0.2em] uppercase rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 ${
-                paymentMethod === 'paypal'
-                  ? 'bg-[#0070BA] hover:bg-[#005ea6] text-white shadow-blue-900/20'
-                  : 'bg-gold hover:bg-gold-bright text-purple-darkest'
-              }`}
+              className="w-full py-4 px-6 font-semibold text-xs tracking-[0.2em] uppercase rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 bg-gold hover:bg-gold-bright text-purple-darkest"
             >
               {loading ? (
                 <>
                   <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  <span>Securing Order...</span>
+                  <span>Securing Demo Order...</span>
                 </>
-              ) : paymentMethod === 'paypal' ? (
-                `Pay with PayPal · $${grandTotalUSD} USD`
               ) : (
-                `Proceed to Paystack · ${formatNaira(grandTotalKobo)}`
+                `Complete Demo Order · ${formatNaira(grandTotalKobo)}`
               )}
             </button>
 
             {/* Security Guarantee */}
             <div className="mt-4 text-center">
-              <p className="text-[0.68rem] text-purple-ink/50 flex items-center justify-center gap-1.5">
+              <p className="text-[0.68rem] text-purple-ink/60 flex items-center justify-center gap-1.5">
                 <span>🔒</span>
-                <span>
-                  {paymentMethod === 'paypal'
-                    ? 'Protected by PayPal Buyer Protection & 256-Bit Encryption'
-                    : '256-Bit SSL Encrypted & Paystack Protected'}
-                </span>
+                <span>Demo Payment Mode Active · Zero charges billed · Instant Email Confirmation</span>
               </p>
             </div>
           </div>

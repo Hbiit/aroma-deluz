@@ -88,7 +88,9 @@ export async function POST(request: Request) {
 
     const grandTotalKobo = calculatedItemsSubtotalKobo + deliveryKobo;
 
-    const paystackActive = isPaystackConfigured();
+    // Temporary: External payment methods are paused, direct demo payment is active
+    const isDemoMode = body.isDemo !== false && (body.paymentMethod === 'demo' || process.env.ENABLE_LIVE_PAYMENTS !== 'true');
+    const paystackActive = !isDemoMode && isPaystackConfigured();
 
     // 2. Insert order record into database or memory store
     let createdOrderId = orderRef;
@@ -105,10 +107,10 @@ export async function POST(request: Request) {
           address,
           city,
           state,
-          note,
-          status: paystackActive ? 'pending' : 'paid',
+          note: note ? `${note} | Demo Atelier Order` : 'Demo Atelier Order',
+          status: isDemoMode ? 'paid' : 'pending',
           total_kobo: grandTotalKobo,
-          demo: !paystackActive,
+          demo: isDemoMode,
         })
         .select()
         .single();
@@ -161,7 +163,46 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Handle Paystack Hosted Checkout
+    // 3. Handle Demo Mode (External Payment Methods Temporarily Disabled)
+    if (isDemoMode) {
+      try {
+        const { sendOrderConfirmationEmail } = await import('@/lib/mailgun');
+        const emailResult = await sendOrderConfirmationEmail({
+          reference: orderRef,
+          fullName: fullName || 'Valued Client',
+          email,
+          phone,
+          address,
+          city,
+          state,
+          items: verifiedOrderItems,
+          totalKobo: grandTotalKobo,
+        });
+
+        if (emailResult.success) {
+          const sentAt = new Date().toISOString();
+          if (supabase) {
+            await supabase
+              .from('orders')
+              .update({ email_sent_at: sentAt })
+              .eq('reference', orderRef);
+          } else {
+            memoryStore.markEmailSent(orderRef);
+          }
+          console.log(`[Demo Checkout] Confirmation email dispatched for ${orderRef} to ${email}`);
+        }
+      } catch (emailErr) {
+        console.error('[Demo Checkout] Email dispatch exception:', emailErr);
+      }
+
+      return NextResponse.json({
+        success: true,
+        reference: orderRef,
+        demo: true,
+      });
+    }
+
+    // 4. Handle Paystack Hosted Checkout (when live payments enabled)
     if (paystackActive) {
       const origin = request.headers.get('origin');
       const host = request.headers.get('host');
@@ -217,24 +258,6 @@ export async function POST(request: Request) {
         accessCode: paystackRes.accessCode,
         demo: false,
       });
-    }
-
-    // 4. Demo Mode Fallback (when PAYSTACK_SECRET_KEY is absent)
-    try {
-      const { sendOrderConfirmationEmail } = await import('@/lib/mailgun');
-      await sendOrderConfirmationEmail({
-        reference: orderRef,
-        fullName: fullName || 'Valued Client',
-        email,
-        phone,
-        address,
-        city,
-        state,
-        items: verifiedOrderItems,
-        totalKobo: grandTotalKobo,
-      });
-    } catch (emailErr) {
-      console.warn('Demo order confirmation email skipped or failed:', emailErr);
     }
 
     return NextResponse.json({
