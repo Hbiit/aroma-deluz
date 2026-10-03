@@ -5,6 +5,6 @@ echo ========================================================
 echo.
 echo Building iOS App (Simulator / Preview Profile)...
 echo.
-npx eas build -p ios --profile preview
+npx -y eas-cli build -p ios --profile preview
 echo.
 pause
