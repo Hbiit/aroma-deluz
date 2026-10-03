@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Aroma De Luz",
+    "slug": "aroma-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#241441"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aromadeluz.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#241441"
+      },
+      "package": "com.aromadeluz.mobile"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
