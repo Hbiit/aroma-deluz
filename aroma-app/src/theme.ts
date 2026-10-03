@@ -1,0 +1,27 @@
+export const THEME = {
+  colors: {
+    purpleDeep: '#3B2367',
+    purpleDarkest: '#241441',
+    purpleInk: '#1A0F30',
+    purpleLight: '#52348A',
+    purpleSurface: '#2D1B4E',
+    gold: '#C9A45C',
+    goldBright: '#E3C77F',
+    goldMuted: '#A07E36',
+    goldSoft: 'rgba(201, 164, 92, 0.15)',
+    cream: '#F7F2EA',
+    ivory: '#FDFBF7',
+    white: '#FFFFFF',
+    border: 'rgba(201, 164, 92, 0.22)',
+    cardBg: '#FFFFFF',
+    cardBorder: 'rgba(59, 35, 103, 0.08)',
+    grayText: '#7A7289',
+    grayLight: '#E8E4DF',
+    success: '#10B981',
+    error: '#EF4444',
+  },
+  fonts: {
+    serif: 'Georgia, serif',
+    sans: 'system-ui, -apple-system, sans-serif',
+  },
+};

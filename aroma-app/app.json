@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Aroma De Luz",
+    "slug": "aroma-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "aromadeluz",
+    "splash": {
+      "backgroundColor": "#241441",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aromadeluz.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["fetch"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#241441"
+      },
+      "package": "com.aromadeluz.app",
+      "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"]
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
