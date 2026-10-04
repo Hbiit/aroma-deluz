@@ -26,6 +26,15 @@ export const metadata: Metadata = {
   title: 'Aroma Deluz — Luxury Scented Candles & Perfumes',
   description:
     'Aroma Deluz creates timeless fragrances that celebrate elegance, femininity, and unforgettable presence. Luxury scented candles and perfumes, hand-poured in Lagos.',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.png', type: 'image/png', sizes: '512x512' },
+    ],
+    apple: [
+      { url: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
