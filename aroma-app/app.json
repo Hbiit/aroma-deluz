@@ -2,7 +2,7 @@
   "expo": {
     "name": "Aroma De Luz",
     "slug": "aroma-app",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "aromadeluz",
@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aromadeluz.app",
+      "buildNumber": "2",
       "infoPlist": {
         "UIBackgroundModes": [
           "fetch"
@@ -27,6 +28,7 @@
         "backgroundColor": "#2D1229"
       },
       "package": "com.aromadeluz.app",
+      "versionCode": 2,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE"
