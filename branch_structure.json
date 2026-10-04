@@ -1,0 +1,21 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "main",
+    "origin",
+    "restored-aroma-state",
+    "restored-version-branch"
+  ],
+  "parent": {
+    "main": null,
+    "origin": "main",
+    "restored-aroma-state": "main",
+    "restored-version-branch": "main"
+  },
+  "order": [
+    "main",
+    "origin",
+    "restored-aroma-state",
+    "restored-version-branch"
+  ]
+}
