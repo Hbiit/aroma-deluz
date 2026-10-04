@@ -29,26 +29,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // In-app Google prompt state
-  const [googlePromptVisible, setGooglePromptVisible] = useState(false);
-  const [googleEmail, setGoogleEmail] = useState('client@gmail.com');
-  const [googleName, setGoogleName] = useState('Valued Client');
-
-  const handleGoogleSignIn = () => {
+  // Direct Google OAuth Trigger
+  const handleGoogleSignIn = async () => {
     setErrorMessage(null);
-    setGooglePromptVisible(true);
-  };
-
-  const handleConfirmGoogle = async () => {
-    setGooglePromptVisible(false);
+    setSuccessMessage(null);
     setLoading(true);
     try {
-      const res = await signInWithGoogle(googleEmail, googleName);
+      const res = await signInWithGoogle();
       if (res.success) {
-        setSuccessMessage('Signed in with Google successfully!');
+        setSuccessMessage('Signed in with Google successfully! Bag is now synced.');
         setTimeout(() => onClose(), 800);
-      } else {
-        setErrorMessage(res.error || 'Google authentication failed');
+      } else if (res.error && !res.error.toLowerCase().includes('cancel') && !res.error.toLowerCase().includes('dismiss')) {
+        setErrorMessage(res.error);
       }
     } catch (e: any) {
       setErrorMessage(e?.message || 'Google sign-in failed');
@@ -280,65 +272,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
               </TouchableOpacity>
             </View>
           )}
-
-          {/* In-App Native Google Account Dialog */}
-          <Modal
-            visible={googlePromptVisible}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => setGooglePromptVisible(false)}
-          >
-            <View style={styles.googleModalOverlay}>
-              <View style={styles.googleModalBox}>
-                <View style={styles.googleModalHeader}>
-                  <Image
-                    source={require('../../assets/google-g-logo.png')}
-                    style={{ width: 26, height: 26 }}
-                    resizeMode="contain"
-                  />
-                  <Text style={styles.googleModalTitle}>Sign in with Google</Text>
-                </View>
-                <Text style={styles.googleModalSubtitle}>
-                  Choose your Google Account to connect seamlessly:
-                </Text>
-
-                <View style={styles.googleField}>
-                  <Text style={styles.googleFieldLabel}>ACCOUNT EMAIL</Text>
-                  <TextInput
-                    style={styles.googleFieldInput}
-                    value={googleEmail}
-                    onChangeText={setGoogleEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                </View>
-
-                <View style={styles.googleField}>
-                  <Text style={styles.googleFieldLabel}>NAME</Text>
-                  <TextInput
-                    style={styles.googleFieldInput}
-                    value={googleName}
-                    onChangeText={setGoogleName}
-                  />
-                </View>
-
-                <TouchableOpacity
-                  style={styles.googleActionBtn}
-                  onPress={handleConfirmGoogle}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.googleActionBtnText}>Continue as {googleName}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.googleDismissBtn}
-                  onPress={() => setGooglePromptVisible(false)}
-                >
-                  <Text style={styles.googleDismissBtnText}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
         </View>
       </KeyboardAvoidingView>
     </Modal>

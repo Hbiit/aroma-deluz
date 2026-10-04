@@ -26,11 +26,6 @@ export const AccountScreen: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // In-App Native Google Account Sheet State
-  const [googleModalVisible, setGoogleModalVisible] = useState(false);
-  const [googleEmailInput, setGoogleEmailInput] = useState('client@gmail.com');
-  const [googleNameInput, setGoogleNameInput] = useState('Valued Client');
-
   // Orders state
   const [orders, setOrders] = useState<any[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -54,25 +49,20 @@ export const AccountScreen: React.FC = () => {
     }
   }, [user]);
 
-  // Native In-App Google Sign-In Trigger
-  const handleGoogleSignInPrompt = () => {
+  // Direct Official Google OAuth Trigger
+  const handleGoogleSignIn = async () => {
     setErrorMessage(null);
-    setGoogleModalVisible(true);
-  };
-
-  const handleConfirmGoogleSignIn = async () => {
-    setGoogleModalVisible(false);
+    setSuccessMessage(null);
     setLoading(true);
-    setErrorMessage(null);
     try {
-      const res = await signInWithGoogle(googleEmailInput, googleNameInput);
+      const res = await signInWithGoogle();
       if (res.success) {
         setSuccessMessage('Successfully signed in with Google!');
-      } else {
-        setErrorMessage(res.error || 'Google sign-in could not be completed');
+      } else if (res.error && !res.error.toLowerCase().includes('cancel') && !res.error.toLowerCase().includes('dismiss')) {
+        setErrorMessage(res.error);
       }
     } catch (e: any) {
-      setErrorMessage(e?.message || 'Google sign-in failed');
+      setErrorMessage(e?.message || 'Google sign-in could not be completed');
     } finally {
       setLoading(false);
     }
@@ -256,7 +246,7 @@ export const AccountScreen: React.FC = () => {
           {/* Luxurious Google Sign In Button with Official 4-Color G Logo */}
           <TouchableOpacity
             style={styles.googleBtn}
-            onPress={handleGoogleSignInPrompt}
+            onPress={handleGoogleSignIn}
             disabled={loading}
             activeOpacity={0.85}
           >
@@ -356,65 +346,6 @@ export const AccountScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       )}
-
-      {/* In-App Native Google Account Dialog (Zero browser redirects) */}
-      <Modal
-        visible={googleModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setGoogleModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.googleModalCard}>
-            <View style={styles.googleModalHeader}>
-              <Image
-                source={require('../../assets/google-g-logo.png')}
-                style={{ width: 28, height: 28 }}
-                resizeMode="contain"
-              />
-              <Text style={styles.googleModalTitle}>Sign in with Google</Text>
-            </View>
-            <Text style={styles.googleModalSubtitle}>
-              Choose your Google Account to connect seamlessly to Aroma De Luz:
-            </Text>
-
-            <View style={styles.googleInputGroup}>
-              <Text style={styles.googleInputLabel}>GOOGLE ACCOUNT EMAIL</Text>
-              <TextInput
-                style={styles.googleInput}
-                value={googleEmailInput}
-                onChangeText={setGoogleEmailInput}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={styles.googleInputGroup}>
-              <Text style={styles.googleInputLabel}>DISPLAY NAME</Text>
-              <TextInput
-                style={styles.googleInput}
-                value={googleNameInput}
-                onChangeText={setGoogleNameInput}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={styles.googleConfirmBtn}
-              onPress={handleConfirmGoogleSignIn}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.googleConfirmBtnText}>Continue as {googleNameInput}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.googleCancelBtn}
-              onPress={() => setGoogleModalVisible(false)}
-            >
-              <Text style={styles.googleCancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </ScrollView>
   );
 };
