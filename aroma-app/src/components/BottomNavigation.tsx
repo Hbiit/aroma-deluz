@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: THEME.colors.purpleDarkest,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(212, 175, 55, 0.3)',
+    borderTopColor: THEME.colors.border,
     paddingBottom: Platform.OS === 'ios' ? 24 : 10,
     paddingTop: 10,
     height: Platform.OS === 'ios' ? 84 : 64,

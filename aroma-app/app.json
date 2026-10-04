@@ -9,7 +9,7 @@
     "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash.png",
-      "backgroundColor": "#241441",
+      "backgroundColor": "#2D1229",
       "resizeMode": "contain"
     },
     "ios": {
@@ -24,7 +24,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#241441"
+        "backgroundColor": "#2D1229"
       },
       "package": "com.aromadeluz.app",
       "permissions": [

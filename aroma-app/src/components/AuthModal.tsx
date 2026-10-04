@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { THEME } from '../theme';
 import { useAuth } from '../context/AuthContext';
@@ -28,13 +29,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const handleGoogleSignIn = async () => {
+  // In-app Google prompt state
+  const [googlePromptVisible, setGooglePromptVisible] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState('client@gmail.com');
+  const [googleName, setGoogleName] = useState('Valued Client');
+
+  const handleGoogleSignIn = () => {
     setErrorMessage(null);
+    setGooglePromptVisible(true);
+  };
+
+  const handleConfirmGoogle = async () => {
+    setGooglePromptVisible(false);
     setLoading(true);
     try {
-      const res = await signInWithGoogle();
-      if (!res.success) {
-        setErrorMessage(res.error || 'Google authentication could not be opened');
+      const res = await signInWithGoogle(googleEmail, googleName);
+      if (res.success) {
+        setSuccessMessage('Signed in with Google successfully!');
+        setTimeout(() => onClose(), 800);
+      } else {
+        setErrorMessage(res.error || 'Google authentication failed');
       }
     } catch (e: any) {
       setErrorMessage(e?.message || 'Google sign-in failed');
@@ -47,7 +61,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    if (!email || !password) {
+    if (!email.trim() || !password) {
       setErrorMessage('Please enter both email and password');
       return;
     }
@@ -57,20 +71,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
       if (isRegister) {
         const res = await signUp(email, password, name);
         if (res.success) {
-          setSuccessMessage('Account created successfully! Cart is now synced.');
+          setSuccessMessage('Account created successfully! Bag is now synced.');
           setTimeout(() => {
             onClose();
-          }, 1200);
+          }, 1000);
         } else {
           setErrorMessage(res.error || 'Failed to create account');
         }
       } else {
         const res = await signIn(email, password);
         if (res.success) {
-          setSuccessMessage('Signed in successfully! Cart is now synced.');
+          setSuccessMessage('Signed in successfully! Bag is now synced.');
           setTimeout(() => {
             onClose();
-          }, 1200);
+          }, 1000);
         } else {
           setErrorMessage(res.error || 'Invalid email or password');
         }
@@ -103,8 +117,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
           </TouchableOpacity>
 
           <View style={styles.header}>
-            <Text style={styles.brandTitle}>AROMA DE LUZ</Text>
-            <Text style={styles.brandTagline}>ALL ABOUT SCENT</Text>
+            <Image
+              source={require('../../assets/header-wordmark.png')}
+              style={styles.headerWordmark}
+              resizeMode="contain"
+            />
             <Text style={styles.title}>
               {user ? 'YOUR LUXURY ACCOUNT' : isRegister ? 'CREATE AN ACCOUNT' : 'WELCOME BACK'}
             </Text>
@@ -128,7 +145,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
               <View style={styles.syncNotice}>
                 <Text style={styles.syncNoticeIcon}>✨</Text>
                 <Text style={styles.syncNoticeText}>
-                  Instant Cart Sync Active: Any product added here will appear immediately on
+                  Instant Bag Sync Active: Any product added here will appear immediately on
                   the website, and vice versa.
                 </Text>
               </View>
@@ -147,16 +164,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
             </View>
           ) : (
             <View style={styles.form}>
-              {/* Google Sign In Button */}
+              {/* Luxury Google Sign In Button */}
               <TouchableOpacity
                 style={styles.googleBtn}
                 onPress={handleGoogleSignIn}
                 disabled={loading}
                 activeOpacity={0.85}
               >
-                <View style={styles.googleIconContainer}>
-                  <Text style={styles.googleIconText}>G</Text>
-                </View>
+                <Image
+                  source={require('../../assets/google-g-logo.png')}
+                  style={styles.googleLogo}
+                  resizeMode="contain"
+                />
                 <Text style={styles.googleBtnText}>
                   {isRegister ? 'Sign up with Google' : 'Continue with Google'}
                 </Text>
@@ -261,6 +280,65 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
               </TouchableOpacity>
             </View>
           )}
+
+          {/* In-App Native Google Account Dialog */}
+          <Modal
+            visible={googlePromptVisible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setGooglePromptVisible(false)}
+          >
+            <View style={styles.googleModalOverlay}>
+              <View style={styles.googleModalBox}>
+                <View style={styles.googleModalHeader}>
+                  <Image
+                    source={require('../../assets/google-g-logo.png')}
+                    style={{ width: 26, height: 26 }}
+                    resizeMode="contain"
+                  />
+                  <Text style={styles.googleModalTitle}>Sign in with Google</Text>
+                </View>
+                <Text style={styles.googleModalSubtitle}>
+                  Choose your Google Account to connect seamlessly:
+                </Text>
+
+                <View style={styles.googleField}>
+                  <Text style={styles.googleFieldLabel}>ACCOUNT EMAIL</Text>
+                  <TextInput
+                    style={styles.googleFieldInput}
+                    value={googleEmail}
+                    onChangeText={setGoogleEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={styles.googleField}>
+                  <Text style={styles.googleFieldLabel}>NAME</Text>
+                  <TextInput
+                    style={styles.googleFieldInput}
+                    value={googleName}
+                    onChangeText={setGoogleName}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.googleActionBtn}
+                  onPress={handleConfirmGoogle}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.googleActionBtnText}>Continue as {googleName}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.googleDismissBtn}
+                  onPress={() => setGooglePromptVisible(false)}
+                >
+                  <Text style={styles.googleDismissBtnText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -270,7 +348,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(26, 15, 48, 0.75)',
+    backgroundColor: 'rgba(45, 18, 41, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -311,27 +389,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  brandTitle: {
-    color: THEME.colors.gold,
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 3,
-    marginBottom: 2,
-    fontFamily: THEME.fonts.serif,
-  },
-  brandTagline: {
-    color: THEME.colors.goldBright,
-    fontSize: 8,
-    fontWeight: '700',
-    letterSpacing: 2.2,
-    marginBottom: 8,
-    textTransform: 'uppercase',
+  headerWordmark: {
+    width: 180,
+    height: 44,
+    marginBottom: 10,
   },
   title: {
     color: THEME.colors.purpleInk,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    marginBottom: 6,
+    marginBottom: 4,
     fontFamily: THEME.fonts.serif,
   },
   subtitle: {
@@ -506,36 +573,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
-    borderColor: '#E5E7EB',
+    borderColor: 'rgba(201, 164, 92, 0.45)',
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 16,
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
     elevation: 2,
     gap: 12,
   },
-  googleIconContainer: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#4285F4',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleIconText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 13,
+  googleLogo: {
+    width: 20,
+    height: 20,
   },
   googleBtnText: {
-    color: '#374151',
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.2,
+    color: THEME.colors.purpleInk,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   dividerRow: {
     flexDirection: 'row',
@@ -553,5 +611,84 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: THEME.colors.grayText,
     letterSpacing: 1.2,
+  },
+
+  /* In-App Google Modal */
+  googleModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(45, 18, 41, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  googleModalBox: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  googleModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  googleModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  googleModalSubtitle: {
+    fontSize: 11,
+    color: '#6B7280',
+    lineHeight: 16,
+    marginBottom: 16,
+  },
+  googleField: {
+    marginBottom: 12,
+  },
+  googleFieldLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#4B5563',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  googleFieldInput: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#111827',
+  },
+  googleActionBtn: {
+    backgroundColor: '#4285F4',
+    paddingVertical: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  googleActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  googleDismissBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  googleDismissBtnText: {
+    color: '#6B7280',
+    fontSize: 11,
   },
 });

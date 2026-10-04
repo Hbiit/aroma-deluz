@@ -55,10 +55,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCart, onOpenAuth }) => {
           </View>
         </TouchableOpacity>
 
-        {/* Center: Refined Brand Lockup with ALL ABOUT SCENT tagline */}
+        {/* Center: Brand Wordmark with original embossed 3D gold texture (no flame/leaves icon) */}
         <View style={styles.brandContainer}>
-          <Text style={styles.brandTitle}>AROMA DE LUZ</Text>
-          <Text style={styles.brandTagline}>ALL ABOUT SCENT</Text>
+          <Image
+            source={require('../../assets/header-wordmark.png')}
+            style={styles.headerWordmark}
+            resizeMode="contain"
+          />
         </View>
 
         {/* Right: Cart Button with badge */}
@@ -155,20 +158,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  brandTitle: {
-    color: THEME.colors.gold,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 3,
-    fontFamily: THEME.fonts.serif,
-  },
-  brandTagline: {
-    color: THEME.colors.goldBright,
-    fontSize: 8,
-    fontWeight: '700',
-    letterSpacing: 2.8,
-    marginTop: 2,
-    textTransform: 'uppercase',
+  headerWordmark: {
+    width: 170,
+    height: 38,
   },
   cartBtn: {
     position: 'relative',

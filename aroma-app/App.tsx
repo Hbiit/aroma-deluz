@@ -8,7 +8,7 @@ export default function App() {
   return (
     <AuthProvider>
       <CartProvider>
-        <StatusBar barStyle="light-content" backgroundColor="#241441" />
+        <StatusBar barStyle="light-content" backgroundColor="#2D1229" />
         <CatalogScreen />
       </CartProvider>
     </AuthProvider>
