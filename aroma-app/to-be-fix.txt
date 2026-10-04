@@ -1,0 +1,26 @@
+The login with google icon is plain and terrible.
+
+When ever I tried to login to google it open's an external browser to complete the login, and after clicking on my account to sign-in/sign-up it takes me to a page with the url that starts with localhost:3000. I don't want that, I want everything to be complete on the mobile app and fix the localhost:3000 problem so I can login to my account.
+
+The demo payment for paystack is not working.
+
+whenever I complete a payment on the mobile app no confirmation email is sent to the email address.
+
+Make four tabs at the bottom of the mobile app labeled according from left to right:
+Home.
+Categories
+Cart.
+Account.
+All should be functional.
+
+put all the necessary core features and features of aroma de luz website into the mobile app I trust your judgment so add the features you deemed necessary.
+
+also make the color the same the one the web site not lighter, dimmer or darker.
+
+also remove the logo at the top of the mobile app and just leave the name and tagline of Aroma De Luz in it's original texture and like in the brand logo.
+
+the app icon should be clear and neat with the same color has the brand logo.
+
+also remove the tagline from the mobile app icon while still making it clear and neat elegantly.
+
+when the mobile app is open make such the splash screen/launch screen/startup screen that shows is clear, neat and well define.

@@ -55,13 +55,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCart, onOpenAuth }) => {
           </View>
         </TouchableOpacity>
 
-        {/* Center: Brand Lockup with Logo & Tagline */}
+        {/* Center: Refined Brand Lockup with ALL ABOUT SCENT tagline */}
         <View style={styles.brandContainer}>
-          <Image
-            source={require('../../assets/icon.png')}
-            style={styles.brandLogo}
-            resizeMode="contain"
-          />
           <Text style={styles.brandTitle}>AROMA DE LUZ</Text>
           <Text style={styles.brandTagline}>ALL ABOUT SCENT</Text>
         </View>
@@ -160,25 +155,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  brandLogo: {
-    width: 26,
-    height: 26,
-    borderRadius: 5,
-    marginBottom: 2,
-  },
   brandTitle: {
     color: THEME.colors.gold,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
-    letterSpacing: 2,
+    letterSpacing: 3,
     fontFamily: THEME.fonts.serif,
   },
   brandTagline: {
     color: THEME.colors.goldBright,
-    fontSize: 7.5,
+    fontSize: 8,
     fontWeight: '700',
-    letterSpacing: 2.2,
-    marginTop: 1,
+    letterSpacing: 2.8,
+    marginTop: 2,
+    textTransform: 'uppercase',
   },
   cartBtn: {
     position: 'relative',

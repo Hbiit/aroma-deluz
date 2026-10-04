@@ -1,22 +1,14 @@
 import { CartItem, Product } from '../types';
 
-export const API_BASE_URL = 'http://localhost:3000';
-export const FALLBACK_API_BASE_URL = 'https://aroma-deluz.vercel.app';
+export const API_BASE_URL = 'https://aroma-deluz.vercel.app';
 
-async function fetchWithFallback(endpoint: string, options?: RequestInit): Promise<Response> {
-  try {
-    const res = await fetch(`${API_BASE_URL}${endpoint}`, options);
-    if (res.ok) return res;
-  } catch (e) {
-    // Localhost might not be reachable or dev server not on default host
-  }
-
-  return fetch(`${FALLBACK_API_BASE_URL}${endpoint}`, options);
+async function fetchApi(endpoint: string, options?: RequestInit): Promise<Response> {
+  return fetch(`${API_BASE_URL}${endpoint}`, options);
 }
 
 export async function getProducts(): Promise<Product[]> {
   try {
-    const res = await fetchWithFallback('/api/products');
+    const res = await fetchApi('/api/products');
     if (!res.ok) throw new Error('Failed to fetch products');
     const data = await res.json();
     return Array.isArray(data) ? data : [];
@@ -29,7 +21,7 @@ export async function getProducts(): Promise<Product[]> {
 export async function getUserCart(userId: string): Promise<CartItem[]> {
   if (!userId) return [];
   try {
-    const res = await fetchWithFallback(`/api/cart?userId=${encodeURIComponent(userId)}`, {
+    const res = await fetchApi(`/api/cart?userId=${encodeURIComponent(userId)}`, {
       cache: 'no-store',
     });
     if (!res.ok) return [];
@@ -44,7 +36,7 @@ export async function getUserCart(userId: string): Promise<CartItem[]> {
 export async function saveUserCart(userId: string, items: CartItem[]): Promise<boolean> {
   if (!userId) return false;
   try {
-    const res = await fetchWithFallback('/api/cart', {
+    const res = await fetchApi('/api/cart', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, items }),
@@ -59,12 +51,28 @@ export async function saveUserCart(userId: string, items: CartItem[]): Promise<b
 export async function clearUserCart(userId: string): Promise<boolean> {
   if (!userId) return false;
   try {
-    const res = await fetchWithFallback(`/api/cart?userId=${encodeURIComponent(userId)}`, {
+    const res = await fetchApi(`/api/cart?userId=${encodeURIComponent(userId)}`, {
       method: 'DELETE',
     });
     return res.ok;
   } catch (error) {
     console.warn('Error clearing remote cart:', error);
     return false;
+  }
+}
+
+export async function getUserOrders(userId?: string, email?: string): Promise<any[]> {
+  if (!userId && !email) return [];
+  try {
+    const params = new URLSearchParams();
+    if (userId) params.append('userId', userId);
+    if (email) params.append('email', email);
+    const res = await fetchApi(`/api/user/orders?${params.toString()}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.orders) ? data.orders : [];
+  } catch (error) {
+    console.warn('Error fetching user orders:', error);
+    return [];
   }
 }

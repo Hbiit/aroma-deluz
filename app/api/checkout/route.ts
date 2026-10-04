@@ -212,9 +212,9 @@ export async function POST(request: Request) {
 
       const siteUrl =
         origin ||
-        (host ? `${proto}://${host}` : null) ||
+        (host && !host.includes('localhost') ? `${proto}://${host}` : null) ||
         process.env.NEXT_PUBLIC_SITE_URL ||
-        'http://localhost:3000';
+        'https://aroma-deluz.vercel.app';
 
       const callbackUrl = `${siteUrl.replace(/\/$/, '')}/checkout/success`;
 

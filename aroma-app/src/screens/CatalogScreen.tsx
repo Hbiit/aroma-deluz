@@ -16,6 +16,10 @@ import { CartModal } from '../components/CartModal';
 import { AuthModal } from '../components/AuthModal';
 import { ProductDetailModal } from '../components/ProductDetailModal';
 import { CheckoutModal } from '../components/CheckoutModal';
+import { BottomNavigation, NavTab } from '../components/BottomNavigation';
+import { CategoriesScreen } from './CategoriesScreen';
+import { CartScreen } from './CartScreen';
+import { AccountScreen } from './AccountScreen';
 import { getProducts } from '../services/api';
 import { Product } from '../types';
 import { useCart } from '../context/CartContext';
@@ -25,13 +29,16 @@ export const CatalogScreen: React.FC = () => {
   const { user } = useAuth();
   const { totalItems, isSyncing, syncNow } = useCart();
 
+  // Tab State: 'home' | 'categories' | 'cart' | 'account'
+  const [currentTab, setCurrentTab] = useState<NavTab>('home');
+
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'candles' | 'perfumes'>('all');
 
   // Modals state
-  const [cartVisible, setCartVisible] = useState(false);
+  const [cartModalVisible, setCartModalVisible] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -65,118 +72,152 @@ export const CatalogScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* Top Header with Brand Typography & Tagline */}
       <Header
-        onOpenCart={() => setCartVisible(true)}
-        onOpenAuth={() => setAuthVisible(true)}
+        onOpenCart={() => setCurrentTab('cart')}
+        onOpenAuth={() => setCurrentTab('account')}
       />
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={THEME.colors.gold}
-          />
-        }
-      >
-        {/* Editorial Hero Banner */}
-        <View style={styles.heroBanner}>
-          <Text style={styles.heroEyebrow}>AROMA DE LUZ · ALL ABOUT SCENT</Text>
-          <Text style={styles.heroTitle}>Sensory Elegance</Text>
-          <Text style={styles.heroSubtitle}>
-            Immerse yourself in artisanal luxury scents poured by hand in Lagos.
-          </Text>
-
-          {/* Sync indicator banner */}
-          <View style={styles.cloudSyncPill}>
-            <View
-              style={[
-                styles.syncPulseDot,
-                { backgroundColor: isSyncing ? THEME.colors.goldBright : THEME.colors.success },
-              ]}
-            />
-            <Text style={styles.cloudSyncText}>
-              {user
-                ? `Cart Synced with Web (${user.email})`
-                : 'Local Cart Active · Sign In to Sync across Web & Mobile'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Category Pills */}
-        <View style={styles.categoryRow}>
-          <TouchableOpacity
-            style={[styles.categoryPill, selectedCategory === 'all' && styles.categoryPillActive]}
-            onPress={() => setSelectedCategory('all')}
-          >
-            <Text
-              style={[styles.categoryPillText, selectedCategory === 'all' && styles.categoryPillTextActive]}
-            >
-              ALL ITEMS
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.categoryPill, selectedCategory === 'candles' && styles.categoryPillActive]}
-            onPress={() => setSelectedCategory('candles')}
-          >
-            <Text
-              style={[
-                styles.categoryPillText,
-                selectedCategory === 'candles' && styles.categoryPillTextActive,
-              ]}
-            >
-              SCENTED CANDLES
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.categoryPill, selectedCategory === 'perfumes' && styles.categoryPillActive]}
-            onPress={() => setSelectedCategory('perfumes')}
-          >
-            <Text
-              style={[
-                styles.categoryPillText,
-                selectedCategory === 'perfumes' && styles.categoryPillTextActive,
-              ]}
-            >
-              LUXURY PERFUMES
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Product Catalog Grid */}
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={THEME.colors.gold} />
-            <Text style={styles.loadingText}>Unveiling the Fragrances...</Text>
-          </View>
-        ) : filteredProducts.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No fragrances found in this collection.</Text>
-          </View>
-        ) : (
-          <View style={styles.grid}>
-            {filteredProducts.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onPress={(p) => setSelectedProduct(p)}
+      {/* Main Tab Screen Content */}
+      <View style={styles.mainContainer}>
+        {currentTab === 'home' && (
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={THEME.colors.gold}
               />
-            ))}
-          </View>
-        )}
-      </ScrollView>
+            }
+          >
+            {/* Editorial Hero Banner */}
+            <View style={styles.heroBanner}>
+              <Text style={styles.heroEyebrow}>AROMA DE LUZ · ALL ABOUT SCENT</Text>
+              <Text style={styles.heroTitle}>Sensory Elegance</Text>
+              <Text style={styles.heroSubtitle}>
+                Immerse yourself in artisanal luxury scents poured by hand in Lagos.
+              </Text>
 
-      {/* Floating Bottom Quick Bar for Cart */}
-      {totalItems > 0 && (
+              {/* Cloud sync pill */}
+              <View style={styles.cloudSyncPill}>
+                <View
+                  style={[
+                    styles.syncPulseDot,
+                    { backgroundColor: isSyncing ? THEME.colors.goldBright : THEME.colors.success },
+                  ]}
+                />
+                <Text style={styles.cloudSyncText}>
+                  {user
+                    ? `Cart Synced with Web (${user.email})`
+                    : 'Local Cart Active · Sign In to Sync across Web & Mobile'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Category Filter Row */}
+            <View style={styles.categoryRow}>
+              <TouchableOpacity
+                style={[styles.categoryPill, selectedCategory === 'all' && styles.categoryPillActive]}
+                onPress={() => setSelectedCategory('all')}
+              >
+                <Text
+                  style={[
+                    styles.categoryPillText,
+                    selectedCategory === 'all' && styles.categoryPillTextActive,
+                  ]}
+                >
+                  ALL ITEMS
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.categoryPill,
+                  selectedCategory === 'candles' && styles.categoryPillActive,
+                ]}
+                onPress={() => setSelectedCategory('candles')}
+              >
+                <Text
+                  style={[
+                    styles.categoryPillText,
+                    selectedCategory === 'candles' && styles.categoryPillTextActive,
+                  ]}
+                >
+                  SCENTED CANDLES
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.categoryPill,
+                  selectedCategory === 'perfumes' && styles.categoryPillActive,
+                ]}
+                onPress={() => setSelectedCategory('perfumes')}
+              >
+                <Text
+                  style={[
+                    styles.categoryPillText,
+                    selectedCategory === 'perfumes' && styles.categoryPillTextActive,
+                  ]}
+                >
+                  LUXURY PERFUMES
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Product Catalog Grid */}
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={THEME.colors.gold} />
+                <Text style={styles.loadingText}>Unveiling the Fragrances...</Text>
+              </View>
+            ) : filteredProducts.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No fragrances found in this collection.</Text>
+              </View>
+            ) : (
+              <View style={styles.grid}>
+                {filteredProducts.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onPress={(p) => setSelectedProduct(p)}
+                  />
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        )}
+
+        {currentTab === 'categories' && (
+          <CategoriesScreen
+            products={products}
+            loading={loading}
+            onSelectProduct={(p) => setSelectedProduct(p)}
+            onOpenCart={() => setCurrentTab('cart')}
+          />
+        )}
+
+        {currentTab === 'cart' && (
+          <CartScreen
+            onOpenCheckout={() => setCheckoutVisible(true)}
+            onExploreProducts={() => setCurrentTab('home')}
+            onOpenAuth={() => setCurrentTab('account')}
+          />
+        )}
+
+        {currentTab === 'account' && <AccountScreen />}
+      </View>
+
+      {/* Floating Bottom Quick Bar for Cart (when on Home tab and items in cart) */}
+      {currentTab === 'home' && totalItems > 0 && (
         <View style={styles.floatingBar}>
           <TouchableOpacity
             style={styles.floatingBtn}
             activeOpacity={0.9}
-            onPress={() => setCartVisible(true)}
+            onPress={() => setCurrentTab('cart')}
           >
             <View style={styles.floatingLeft}>
               <View style={styles.floatingBadge}>
@@ -189,16 +230,19 @@ export const CatalogScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Modals */}
+      {/* Dedicated 4-Tab Bottom Navigation */}
+      <BottomNavigation currentTab={currentTab} onSelectTab={setCurrentTab} />
+
+      {/* Shared Modals */}
       <CartModal
-        visible={cartVisible}
-        onClose={() => setCartVisible(false)}
+        visible={cartModalVisible}
+        onClose={() => setCartModalVisible(false)}
         onOpenAuth={() => {
-          setCartVisible(false);
+          setCartModalVisible(false);
           setAuthVisible(true);
         }}
         onOpenCheckout={() => {
-          setCartVisible(false);
+          setCartModalVisible(false);
           setCheckoutVisible(true);
         }}
       />
@@ -207,20 +251,17 @@ export const CatalogScreen: React.FC = () => {
         visible={checkoutVisible}
         onClose={() => setCheckoutVisible(false)}
         onOrderSuccess={(ref) => {
-          console.log('Order placed successfully:', ref);
+          console.log('Order completed with ref:', ref);
         }}
       />
 
-      <AuthModal
-        visible={authVisible}
-        onClose={() => setAuthVisible(false)}
-      />
+      <AuthModal visible={authVisible} onClose={() => setAuthVisible(false)} />
 
       <ProductDetailModal
         product={selectedProduct}
         visible={!!selectedProduct}
         onClose={() => setSelectedProduct(null)}
-        onOpenCart={() => setCartVisible(true)}
+        onOpenCart={() => setCurrentTab('cart')}
       />
     </SafeAreaView>
   );
@@ -228,6 +269,10 @@ export const CatalogScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   safeArea: {
+    flex: 1,
+    backgroundColor: THEME.colors.purpleDarkest,
+  },
+  mainContainer: {
     flex: 1,
     backgroundColor: THEME.colors.ivory,
   },
@@ -341,9 +386,10 @@ const styles = StyleSheet.create({
   },
   floatingBar: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 74,
     left: 20,
     right: 20,
+    zIndex: 10,
   },
   floatingBtn: {
     backgroundColor: THEME.colors.purpleDeep,

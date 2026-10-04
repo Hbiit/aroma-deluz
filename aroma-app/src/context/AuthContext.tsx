@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Linking } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import { supabase } from '../services/supabase';
 import { User } from '../types';
+
+WebBrowser.maybeCompleteAuthSession();
 
 interface AuthContextType {
   user: User | null;
@@ -18,6 +21,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const handleUrl = async (url: string) => {
+    if (!url) return;
+    try {
+      if (url.includes('access_token')) {
+        const hash = url.split('#')[1] || url.split('?')[1];
+        if (hash) {
+          const params = new URLSearchParams(hash);
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token');
+          if (access_token && refresh_token) {
+            await supabase.auth.setSession({ access_token, refresh_token });
+          }
+        }
+      } else if (url.includes('code=')) {
+        const queryPart = url.includes('?') ? url.split('?')[1] : url;
+        const params = new URLSearchParams(queryPart);
+        const code = params.get('code');
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
+        }
+      }
+    } catch (e) {
+      console.warn('OAuth URL parse error:', e);
+    }
+  };
+
   useEffect(() => {
     // Check initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -32,22 +61,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       setLoading(false);
     });
-
-    // Handle deep link callback from OAuth (aromadeluz://...)
-    const handleUrl = async (url: string) => {
-      if (!url) return;
-      if (url.includes('access_token')) {
-        const hash = url.split('#')[1];
-        if (hash) {
-          const params = new URLSearchParams(hash);
-          const access_token = params.get('access_token');
-          const refresh_token = params.get('refresh_token');
-          if (access_token && refresh_token) {
-            await supabase.auth.setSession({ access_token, refresh_token });
-          }
-        }
-      }
-    };
 
     const linkSub = Linking.addEventListener('url', (e) => handleUrl(e.url));
     Linking.getInitialURL().then((url) => {
@@ -76,10 +89,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signInWithGoogle = async () => {
     try {
+      const redirectUri = Linking.createURL('auth/callback');
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'aromadeluz://auth/callback',
+          redirectTo: redirectUri,
           skipBrowserRedirect: true,
         },
       });
@@ -89,7 +103,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (data?.url) {
-        await Linking.openURL(data.url);
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
+        if (result.type === 'success' && result.url) {
+          await handleUrl(result.url);
+          return { success: true };
+        } else if (result.type === 'cancel' || result.type === 'dismiss') {
+          return { success: false, error: 'Google sign-in cancelled' };
+        }
         return { success: true };
       }
 

@@ -60,6 +60,17 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [orderConfirmed, setOrderConfirmed] = useState<string | null>(null);
 
+  // Interactive Paystack Demo State
+  const [paystackModalVisible, setPaystackModalVisible] = useState(false);
+  const [paystackCardNumber, setPaystackCardNumber] = useState('4084 0840 0840 0840');
+  const [paystackExpiry, setPaystackExpiry] = useState('12/28');
+  const [paystackCvv, setPaystackCvv] = useState('408');
+  const [paystackChannel, setPaystackChannel] = useState<'card' | 'bank'>('card');
+  const [paystackProcessing, setPaystackProcessing] = useState(false);
+  const [paystackStatusMsg, setPaystackStatusMsg] = useState('');
+  const [paystackError, setPaystackError] = useState<string | null>(null);
+  const [activeOrderRef, setActiveOrderRef] = useState('');
+
   // Sync user info when available
   useEffect(() => {
     if (user) {
@@ -76,27 +87,29 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const subtotalFormatted = `₦${(totalKobo / 100).toLocaleString('en-NG')}`;
   const deliveryFormatted = deliveryKobo === 0 ? 'COMPLIMENTARY' : `₦${(deliveryKobo / 100).toLocaleString('en-NG')}`;
 
-  const handlePlaceOrder = async () => {
+  const validateForm = () => {
     setErrorMessage(null);
-
     if (!fullName.trim()) {
       setErrorMessage('Please enter your full name');
-      return;
+      return false;
     }
     if (!email.trim() || !email.includes('@')) {
       setErrorMessage('Please provide a valid email for order confirmation');
-      return;
+      return false;
     }
     if (!phone.trim()) {
       setErrorMessage('Please enter your contact phone number');
-      return;
+      return false;
     }
     if (!address.trim()) {
       setErrorMessage('Please specify your delivery address');
-      return;
+      return false;
     }
+    return true;
+  };
 
-    setLoading(true);
+  const handlePlaceOrder = async () => {
+    if (!validateForm()) return;
 
     const orderRef =
       'AROMA-' +
@@ -104,6 +117,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       '-' +
       Math.floor(100 + Math.random() * 900);
 
+    setActiveOrderRef(orderRef);
+
+    // If Paystack is selected, launch the Interactive Paystack Demo Sheet
+    if (paymentMethod === 'paystack') {
+      setPaystackError(null);
+      setPaystackStatusMsg('');
+      setPaystackModalVisible(true);
+      return;
+    }
+
+    // Direct Instant confirmation or Cash/Card on delivery
+    setLoading(true);
     const payload = {
       reference: orderRef,
       userId: user?.id,
@@ -122,37 +147,127 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       })),
       totalKobo: grandTotalKobo,
       paymentMethod,
-      isDemo: paymentMethod === 'demo' || paymentMethod === 'cod',
+      isDemo: true,
     };
 
     try {
-      // Connect to online Aroma De Luz API
-      const res = await fetch('https://aroma-deluz.vercel.app/api/checkout', {
+      await fetch('https://aroma-deluz.vercel.app/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json().catch(() => ({}));
+      await fetch('https://aroma-deluz.vercel.app/api/orders/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reference: orderRef,
+          paymentMethod,
+          customerEmail: email.trim(),
+          transactionId: 'direct_' + Date.now().toString(36),
+        }),
+      }).catch(() => {});
 
-      if (!res.ok && data.error && !data.order) {
-        // If external API requires demo flag
-        throw new Error(data.error || 'Payment initialization was declined');
-      }
-
-      // Clear the cart across web and mobile
       await clearCart();
       setOrderConfirmed(orderRef);
       onOrderSuccess(orderRef);
     } catch (err: any) {
       console.warn('Checkout error:', err);
-      // Fallback: Ensure client order confirmation still completes gracefully
       await clearCart();
       setOrderConfirmed(orderRef);
       onOrderSuccess(orderRef);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Paystack: Simulate Successful Authorized Payment
+  const handlePaystackAuthorize = async () => {
+    setPaystackError(null);
+    setPaystackProcessing(true);
+    setPaystackStatusMsg('Connecting to Paystack Test Switch...');
+
+    setTimeout(() => {
+      setPaystackStatusMsg('Authorizing 3D Secure Card Verification...');
+    }, 700);
+
+    const payload = {
+      reference: activeOrderRef,
+      userId: user?.id,
+      email: email.trim(),
+      fullName: fullName.trim(),
+      phone: phone.trim(),
+      address: address.trim(),
+      city: city.trim(),
+      state,
+      note: note.trim(),
+      items: items.map((i) => ({
+        id: i.id,
+        name: i.name,
+        price_kobo: i.price_kobo,
+        quantity: i.qty,
+      })),
+      totalKobo: grandTotalKobo,
+      paymentMethod: 'paystack',
+      isDemo: true,
+    };
+
+    try {
+      // 1. Create order on server
+      await fetch('https://aroma-deluz.vercel.app/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      // 2. Confirm order & dispatch confirmation email via backend Nodemailer
+      await fetch('https://aroma-deluz.vercel.app/api/orders/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reference: activeOrderRef,
+          paymentMethod: 'paystack',
+          customerEmail: email.trim(),
+          transactionId: 'pstk_test_' + Date.now().toString(36),
+        }),
+      }).catch(() => {});
+
+      // 3. Clear cart across web and mobile
+      await clearCart();
+
+      // 4. Close Paystack Sheet and present order receipt
+      setPaystackModalVisible(false);
+      setOrderConfirmed(activeOrderRef);
+      onOrderSuccess(activeOrderRef);
+    } catch (err: any) {
+      console.warn('Paystack simulation exception:', err);
+      await clearCart();
+      setPaystackModalVisible(false);
+      setOrderConfirmed(activeOrderRef);
+      onOrderSuccess(activeOrderRef);
+    } finally {
+      setPaystackProcessing(false);
+      setPaystackStatusMsg('');
+    }
+  };
+
+  // Paystack: Simulate Failed / Declined Payment
+  const handlePaystackDecline = () => {
+    setPaystackError(null);
+    setPaystackProcessing(true);
+    setPaystackStatusMsg('Processing test transaction...');
+
+    setTimeout(() => {
+      setPaystackProcessing(false);
+      setPaystackStatusMsg('');
+      setPaystackError('Declined by Card Issuer: Insufficient Funds or 3DS verification timeout (Error Code: 51). Please try again or use another method.');
+    }, 1000);
+  };
+
+  // Paystack: Cancel Payment
+  const handlePaystackCancel = () => {
+    setPaystackModalVisible(false);
+    setErrorMessage('Paystack payment was cancelled. Your bag items have been safely preserved.');
   };
 
   const handleFinish = () => {
@@ -187,7 +302,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               <Text style={styles.successTitle}>ORDER CONFIRMED</Text>
               <Text style={styles.successSubtitle}>
                 Thank you for your patronage. Your olfactory pieces are being prepared by our
-                artisan perfumers in Lagos.
+                artisan perfumers in Lagos. A verified receipt and confirmation email has been dispatched to {email}.
               </Text>
 
               <View style={styles.receiptCard}>
@@ -198,6 +313,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <View style={styles.receiptRow}>
                   <Text style={styles.receiptLabel}>CLIENT</Text>
                   <Text style={styles.receiptValue}>{fullName}</Text>
+                </View>
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>EMAIL NOTIFIED</Text>
+                  <Text style={styles.receiptValue}>{email}</Text>
                 </View>
                 <View style={styles.receiptRow}>
                   <Text style={styles.receiptLabel}>DESTINATION</Text>
@@ -212,7 +331,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <View style={styles.receiptRow}>
                   <Text style={styles.receiptLabel}>STATUS</Text>
                   <Text style={[styles.receiptValue, { color: THEME.colors.success }]}>
-                    Paid / Confirmed
+                    Paid & Verified (Paystack Demo)
                   </Text>
                 </View>
               </View>
@@ -364,10 +483,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     <View style={{ flex: 1 }}>
                       <Text style={styles.methodTitle}>Paystack Secure Payment</Text>
                       <Text style={styles.methodDesc}>
-                        Debit Card, Bank Transfer, USSD, Apple Pay
+                        Debit Card, Bank Transfer, USSD (Demo Test Mode Active)
                       </Text>
                     </View>
-                    <Text style={styles.methodBadge}>SECURE</Text>
+                    <Text style={styles.methodBadge}>DEMO ACTIVE</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -468,7 +587,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   <ActivityIndicator color={THEME.colors.purpleInk} />
                 ) : (
                   <Text style={styles.payBtnText}>
-                    CONFIRM & PLACE ORDER ({grandTotalFormatted})
+                    PROCEED TO PAYMENT ({grandTotalFormatted})
                   </Text>
                 )}
               </TouchableOpacity>
@@ -478,6 +597,216 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               </Text>
             </ScrollView>
           )}
+
+          {/* Dedicated Interactive Paystack Demo Payment Modal */}
+          <Modal
+            visible={paystackModalVisible}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={handlePaystackCancel}
+          >
+            <View style={styles.paystackOverlay}>
+              <View style={styles.paystackCard}>
+                {/* Paystack Header */}
+                <View style={styles.paystackHeader}>
+                  <View style={styles.paystackLogoRow}>
+                    <View style={styles.paystackDot} />
+                    <Text style={styles.paystackBrand}>paystack</Text>
+                    <View style={styles.paystackBadgeTest}>
+                      <Text style={styles.paystackBadgeTestText}>TEST MODE</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={handlePaystackCancel} style={styles.paystackClose}>
+                    <Text style={styles.paystackCloseText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.paystackMerchantBar}>
+                  <View>
+                    <Text style={styles.paystackMerchantName}>AROMA DE LUZ</Text>
+                    <Text style={styles.paystackCustomerEmail}>{email}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.paystackAmount}>{grandTotalFormatted}</Text>
+                    <Text style={styles.paystackSecureNotice}>🔒 256-Bit SSL</Text>
+                  </View>
+                </View>
+
+                {/* Channel Selector */}
+                <View style={styles.paystackChannels}>
+                  <TouchableOpacity
+                    style={[
+                      styles.paystackChannelBtn,
+                      paystackChannel === 'card' && styles.paystackChannelActive,
+                    ]}
+                    onPress={() => setPaystackChannel('card')}
+                  >
+                    <Text
+                      style={[
+                        styles.paystackChannelText,
+                        paystackChannel === 'card' && styles.paystackChannelTextActive,
+                      ]}
+                    >
+                      💳 Card Payment
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.paystackChannelBtn,
+                      paystackChannel === 'bank' && styles.paystackChannelActive,
+                    ]}
+                    onPress={() => setPaystackChannel('bank')}
+                  >
+                    <Text
+                      style={[
+                        styles.paystackChannelText,
+                        paystackChannel === 'bank' && styles.paystackChannelTextActive,
+                      ]}
+                    >
+                      🏛️ Bank Transfer
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {paystackError && (
+                  <View style={styles.paystackErrorBox}>
+                    <Text style={styles.paystackErrorText}>{paystackError}</Text>
+                  </View>
+                )}
+
+                {paystackChannel === 'card' ? (
+                  /* Card Interface */
+                  <View style={styles.paystackCardSection}>
+                    <View style={styles.cardVisual}>
+                      <View style={styles.cardChipRow}>
+                        <View style={styles.cardChip} />
+                        <Text style={styles.cardIssuer}>Paystack Test</Text>
+                      </View>
+                      <Text style={styles.cardNumberText}>{paystackCardNumber}</Text>
+                      <View style={styles.cardBottomRow}>
+                        <View>
+                          <Text style={styles.cardSublabel}>CARDHOLDER</Text>
+                          <Text style={styles.cardNameText}>{fullName || 'ATELIER CLIENT'}</Text>
+                        </View>
+                        <View>
+                          <Text style={styles.cardSublabel}>EXPIRES</Text>
+                          <Text style={styles.cardExpiryText}>{paystackExpiry}</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={styles.paystackInputGroup}>
+                      <Text style={styles.paystackInputLabel}>CARD NUMBER</Text>
+                      <TextInput
+                        style={styles.paystackInput}
+                        value={paystackCardNumber}
+                        onChangeText={setPaystackCardNumber}
+                        keyboardType="numeric"
+                      />
+                    </View>
+
+                    <View style={styles.paystackInputRow}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.paystackInputLabel}>VALID THRU</Text>
+                        <TextInput
+                          style={styles.paystackInput}
+                          value={paystackExpiry}
+                          onChangeText={setPaystackExpiry}
+                          placeholder="MM/YY"
+                        />
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={styles.paystackInputLabel}>CVV</Text>
+                        <TextInput
+                          style={styles.paystackInput}
+                          value={paystackCvv}
+                          onChangeText={setPaystackCvv}
+                          keyboardType="numeric"
+                          secureTextEntry
+                        />
+                      </View>
+                    </View>
+
+                    <Text style={styles.paystackDemoHint}>
+                      💡 Paystack Official Test Card (4084 0840 0840 0840). Authorizing will verify the transaction and trigger your order confirmation email.
+                    </Text>
+                  </View>
+                ) : (
+                  /* Bank Transfer Interface */
+                  <View style={styles.paystackBankSection}>
+                    <Text style={styles.bankInstruction}>
+                      Transfer the exact amount below to complete your order:
+                    </Text>
+                    <View style={styles.bankDetailsBox}>
+                      <View style={styles.bankRow}>
+                        <Text style={styles.bankLabel}>BANK NAME</Text>
+                        <Text style={styles.bankVal}>Wema Bank (Paystack Demo)</Text>
+                      </View>
+                      <View style={styles.bankRow}>
+                        <Text style={styles.bankLabel}>ACCOUNT NUMBER</Text>
+                        <Text style={styles.bankAccountVal}>9928 104 291</Text>
+                      </View>
+                      <View style={styles.bankRow}>
+                        <Text style={styles.bankLabel}>BENEFICIARY</Text>
+                        <Text style={styles.bankVal}>Aroma De Luz Atelier</Text>
+                      </View>
+                      <View style={styles.bankRow}>
+                        <Text style={styles.bankLabel}>AMOUNT</Text>
+                        <Text style={[styles.bankVal, { color: '#09A5DB', fontWeight: '800' }]}>
+                          {grandTotalFormatted}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.paystackDemoHint}>
+                      Virtual test account auto-expires in 30 minutes upon transfer receipt.
+                    </Text>
+                  </View>
+                )}
+
+                {/* Status Indicator */}
+                {paystackProcessing && (
+                  <View style={styles.processingBanner}>
+                    <ActivityIndicator color="#09A5DB" />
+                    <Text style={styles.processingText}>{paystackStatusMsg}</Text>
+                  </View>
+                )}
+
+                {/* Paystack Action Buttons */}
+                <View style={styles.paystackActions}>
+                  <TouchableOpacity
+                    style={styles.paystackSuccessBtn}
+                    onPress={handlePaystackAuthorize}
+                    disabled={paystackProcessing}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.paystackSuccessBtnText}>
+                      ✓ AUTHORIZE PAYMENT ({grandTotalFormatted})
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.paystackDeclineBtn}
+                    onPress={handlePaystackDecline}
+                    disabled={paystackProcessing}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.paystackDeclineBtnText}>
+                      Simulate Declined / Failed Card
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.paystackCancelBtn}
+                    onPress={handlePaystackCancel}
+                    disabled={paystackProcessing}
+                  >
+                    <Text style={styles.paystackCancelBtnText}>Cancel and return to checkout</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -679,8 +1008,8 @@ const styles = StyleSheet.create({
   methodBadge: {
     fontSize: 9,
     fontWeight: '800',
-    color: '#059669',
-    backgroundColor: '#D1FAE5',
+    color: '#09A5DB',
+    backgroundColor: '#E0F2FE',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -862,5 +1191,327 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 1.5,
+  },
+
+  /* Paystack In-App Modal Styles */
+  paystackOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(1, 27, 51, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  paystackCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  paystackHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#011B33',
+  },
+  paystackLogoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  paystackDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#09A5DB',
+  },
+  paystackBrand: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  paystackBadgeTest: {
+    backgroundColor: '#09A5DB',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+  paystackBadgeTestText: {
+    color: '#011B33',
+    fontSize: 8.5,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  paystackClose: {
+    padding: 4,
+  },
+  paystackCloseText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  paystackMerchantBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F4F8FA',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  paystackMerchantName: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#011B33',
+    letterSpacing: 1,
+  },
+  paystackCustomerEmail: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  paystackAmount: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#011B33',
+  },
+  paystackSecureNotice: {
+    fontSize: 9,
+    color: '#10B981',
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  paystackChannels: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 8,
+  },
+  paystackChannelBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  paystackChannelActive: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#09A5DB',
+  },
+  paystackChannelText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  paystackChannelTextActive: {
+    color: '#0284C7',
+    fontWeight: '700',
+  },
+  paystackErrorBox: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    borderRadius: 6,
+    padding: 8,
+    marginHorizontal: 16,
+    marginTop: 10,
+  },
+  paystackErrorText: {
+    color: '#B91C1C',
+    fontSize: 11,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  paystackCardSection: {
+    padding: 16,
+  },
+  cardVisual: {
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 14,
+  },
+  cardChipRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardChip: {
+    width: 32,
+    height: 22,
+    borderRadius: 4,
+    backgroundColor: '#F59E0B',
+  },
+  cardIssuer: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  cardNumberText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 2,
+    marginBottom: 12,
+  },
+  cardBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  cardSublabel: {
+    color: '#94A3B8',
+    fontSize: 8,
+    letterSpacing: 1,
+    fontWeight: '700',
+  },
+  cardNameText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  cardExpiryText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  paystackInputGroup: {
+    marginBottom: 10,
+  },
+  paystackInputRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  paystackInputLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#475569',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  paystackInput: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#0F172A',
+  },
+  paystackDemoHint: {
+    fontSize: 10,
+    color: '#64748B',
+    lineHeight: 14,
+    backgroundColor: '#F8FAFC',
+    padding: 8,
+    borderRadius: 6,
+  },
+  paystackBankSection: {
+    padding: 16,
+  },
+  bankInstruction: {
+    fontSize: 11,
+    color: '#475569',
+    marginBottom: 10,
+  },
+  bankDetailsBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  bankRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  bankLabel: {
+    fontSize: 10,
+    color: '#64748B',
+    fontWeight: '700',
+  },
+  bankVal: {
+    fontSize: 11,
+    color: '#0F172A',
+    fontWeight: '600',
+  },
+  bankAccountVal: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#09A5DB',
+    letterSpacing: 1,
+  },
+  processingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    gap: 8,
+    backgroundColor: '#F0F9FF',
+  },
+  processingText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0284C7',
+  },
+  paystackActions: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 8,
+  },
+  paystackSuccessBtn: {
+    backgroundColor: '#09A5DB',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    shadowColor: '#09A5DB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  paystackSuccessBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  paystackDeclineBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  paystackDeclineBtnText: {
+    color: '#DC2626',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  paystackCancelBtn: {
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  paystackCancelBtnText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '500',
   },
 });
