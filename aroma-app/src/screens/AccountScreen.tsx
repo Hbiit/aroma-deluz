@@ -14,9 +14,18 @@ import {
 import { THEME } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { getUserOrders } from '../services/api';
+import { GoogleAuthModal } from '../components/GoogleAuthModal';
 
 export const AccountScreen: React.FC = () => {
-  const { user, signIn, signUp, signInWithGoogle, signOut, loading: authLoading } = useAuth();
+  const {
+    user,
+    signIn,
+    signUp,
+    getGoogleAuthUrl,
+    completeGoogleAuth,
+    signOut,
+    loading: authLoading,
+  } = useAuth();
 
   const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState('');
@@ -25,6 +34,10 @@ export const AccountScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // In-App Google OAuth Sheet State
+  const [googleAuthVisible, setGoogleAuthVisible] = useState(false);
+  const [googleAuthUrl, setGoogleAuthUrl] = useState<string | null>(null);
 
   // Orders state
   const [orders, setOrders] = useState<any[]>([]);
@@ -49,20 +62,43 @@ export const AccountScreen: React.FC = () => {
     }
   }, [user]);
 
-  // Direct Official Google OAuth Trigger
+  // Open In-App Google OAuth Sheet
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
     setLoading(true);
     try {
-      const res = await signInWithGoogle();
-      if (res.success) {
-        setSuccessMessage('Successfully signed in with Google!');
-      } else if (res.error && !res.error.toLowerCase().includes('cancel') && !res.error.toLowerCase().includes('dismiss')) {
-        setErrorMessage(res.error);
+      const res = await getGoogleAuthUrl();
+      if (res.url) {
+        setGoogleAuthUrl(res.url);
+        setGoogleAuthVisible(true);
+      } else {
+        setErrorMessage(res.error || 'Could not initiate Google authentication');
       }
     } catch (e: any) {
-      setErrorMessage(e?.message || 'Google sign-in could not be completed');
+      setErrorMessage(e?.message || 'Google sign-in could not be initiated');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Process Intercepted OAuth Tokens (handles localhost:3000, aromadeluz://, or code)
+  const handleGoogleAuthSuccess = async (tokens: {
+    access_token?: string;
+    refresh_token?: string;
+    code?: string;
+  }) => {
+    setGoogleAuthVisible(false);
+    setLoading(true);
+    try {
+      const res = await completeGoogleAuth(tokens);
+      if (res.success) {
+        setSuccessMessage('Successfully signed in with Google!');
+      } else {
+        setErrorMessage(res.error || 'Google authentication could not be completed');
+      }
+    } catch (e: any) {
+      setErrorMessage(e?.message || 'Google authentication failed');
     } finally {
       setLoading(false);
     }
@@ -346,6 +382,14 @@ export const AccountScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* In-App Google OAuth Modal (Intercepts localhost:3000 redirects seamlessly) */}
+      <GoogleAuthModal
+        visible={googleAuthVisible}
+        authUrl={googleAuthUrl}
+        onClose={() => setGoogleAuthVisible(false)}
+        onSuccess={handleGoogleAuthSuccess}
+      />
     </ScrollView>
   );
 };
