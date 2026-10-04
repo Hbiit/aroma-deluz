@@ -17,9 +17,15 @@ interface CartModalProps {
   visible: boolean;
   onClose: () => void;
   onOpenAuth: () => void;
+  onOpenCheckout: () => void;
 }
 
-export const CartModal: React.FC<CartModalProps> = ({ visible, onClose, onOpenAuth }) => {
+export const CartModal: React.FC<CartModalProps> = ({
+  visible,
+  onClose,
+  onOpenAuth,
+  onOpenCheckout,
+}) => {
   const { user } = useAuth();
   const {
     items,
@@ -39,24 +45,8 @@ export const CartModal: React.FC<CartModalProps> = ({ visible, onClose, onOpenAu
 
   const handleCheckout = () => {
     if (items.length === 0) return;
-    Alert.alert(
-      'Proceed to Checkout',
-      `Your total is ${totalFormatted}. Would you like to proceed with the order?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm & Place Order',
-          onPress: () => {
-            clearCart();
-            onClose();
-            Alert.alert(
-              'Order Placed Successfully!',
-              'Thank you for your purchase from Aroma De Luz. Your fragrance will be prepared with care.'
-            );
-          },
-        },
-      ]
-    );
+    onClose();
+    onOpenCheckout();
   };
 
   return (
@@ -67,6 +57,7 @@ export const CartModal: React.FC<CartModalProps> = ({ visible, onClose, onOpenAu
           <View style={styles.header}>
             <View>
               <Text style={styles.headerTitle}>YOUR SHOPPING BAG</Text>
+              <Text style={styles.brandTagline}>AROMA DE LUZ · ALL ABOUT SCENT</Text>
               <Text style={styles.itemCountText}>
                 {totalItems} {totalItems === 1 ? 'ITEM' : 'ITEMS'}
               </Text>
@@ -239,9 +230,17 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     fontFamily: THEME.fonts.serif,
   },
-  itemCountText: {
+  brandTagline: {
     color: THEME.colors.goldBright,
-    fontSize: 10,
+    fontSize: 7.5,
+    fontWeight: '700',
+    letterSpacing: 2,
+    marginTop: 1,
+    textTransform: 'uppercase',
+  },
+  itemCountText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 9,
     letterSpacing: 1,
     marginTop: 2,
   },

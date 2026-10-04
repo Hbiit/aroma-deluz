@@ -19,7 +19,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
-  const { user, signIn, signUp, signOut } = useAuth();
+  const { user, signIn, signUp, signInWithGoogle, signOut } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -27,6 +27,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const handleGoogleSignIn = async () => {
+    setErrorMessage(null);
+    setLoading(true);
+    try {
+      const res = await signInWithGoogle();
+      if (!res.success) {
+        setErrorMessage(res.error || 'Google authentication could not be opened');
+      }
+    } catch (e: any) {
+      setErrorMessage(e?.message || 'Google sign-in failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async () => {
     setErrorMessage(null);
@@ -88,14 +103,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
           </TouchableOpacity>
 
           <View style={styles.header}>
-            <Text style={styles.brandTitle}>AROMA DELUZ</Text>
+            <Text style={styles.brandTitle}>AROMA DE LUZ</Text>
+            <Text style={styles.brandTagline}>ALL ABOUT SCENT</Text>
             <Text style={styles.title}>
               {user ? 'YOUR LUXURY ACCOUNT' : isRegister ? 'CREATE AN ACCOUNT' : 'WELCOME BACK'}
             </Text>
             <Text style={styles.subtitle}>
               {user
                 ? 'Your shopping bag is synced with web and mobile.'
-                : 'Sign in with your store account to access your synced bag.'}
+                : 'Sign in with your store account or Google to access your synced bag.'}
             </Text>
           </View>
 
@@ -131,6 +147,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
             </View>
           ) : (
             <View style={styles.form}>
+              {/* Google Sign In Button */}
+              <TouchableOpacity
+                style={styles.googleBtn}
+                onPress={handleGoogleSignIn}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <View style={styles.googleIconContainer}>
+                  <Text style={styles.googleIconText}>G</Text>
+                </View>
+                <Text style={styles.googleBtnText}>
+                  {isRegister ? 'Sign up with Google' : 'Continue with Google'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Divider */}
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR WITH EMAIL</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
               {/* Tab Selector */}
               <View style={styles.tabContainer}>
                 <TouchableOpacity
@@ -278,8 +316,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 3,
-    marginBottom: 4,
+    marginBottom: 2,
     fontFamily: THEME.fonts.serif,
+  },
+  brandTagline: {
+    color: THEME.colors.goldBright,
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 2.2,
+    marginBottom: 8,
+    textTransform: 'uppercase',
   },
   title: {
     color: THEME.colors.purpleInk,
@@ -453,5 +499,59 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1.5,
+  },
+  googleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    gap: 12,
+  },
+  googleIconContainer: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#4285F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleIconText: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 13,
+  },
+  googleBtnText: {
+    color: '#374151',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.grayText,
+    letterSpacing: 1.2,
   },
 });

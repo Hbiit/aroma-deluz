@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Image } from 'react-native';
 import { THEME } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
@@ -55,10 +55,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCart, onOpenAuth }) => {
           </View>
         </TouchableOpacity>
 
-        {/* Center: Brand Lockup */}
+        {/* Center: Brand Lockup with Logo & Tagline */}
         <View style={styles.brandContainer}>
-          <Text style={styles.brandTitle}>AROMA</Text>
-          <Text style={styles.brandSubtitle}>DELUZ</Text>
+          <Image
+            source={require('../../assets/icon.png')}
+            style={styles.brandLogo}
+            resizeMode="contain"
+          />
+          <Text style={styles.brandTitle}>AROMA DE LUZ</Text>
+          <Text style={styles.brandTagline}>ALL ABOUT SCENT</Text>
         </View>
 
         {/* Right: Cart Button with badge */}
@@ -153,20 +158,27 @@ const styles = StyleSheet.create({
   },
   brandContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandLogo: {
+    width: 26,
+    height: 26,
+    borderRadius: 5,
+    marginBottom: 2,
   },
   brandTitle: {
     color: THEME.colors.gold,
-    fontSize: 20,
+    fontSize: 14,
     fontWeight: '700',
-    letterSpacing: 3,
+    letterSpacing: 2,
     fontFamily: THEME.fonts.serif,
   },
-  brandSubtitle: {
+  brandTagline: {
     color: THEME.colors.goldBright,
-    fontSize: 8,
-    fontWeight: '600',
-    letterSpacing: 4,
-    marginTop: -2,
+    fontSize: 7.5,
+    fontWeight: '700',
+    letterSpacing: 2.2,
+    marginTop: 1,
   },
   cartBtn: {
     position: 'relative',

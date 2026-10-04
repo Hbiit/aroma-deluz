@@ -15,6 +15,7 @@ import { ProductCard } from '../components/ProductCard';
 import { CartModal } from '../components/CartModal';
 import { AuthModal } from '../components/AuthModal';
 import { ProductDetailModal } from '../components/ProductDetailModal';
+import { CheckoutModal } from '../components/CheckoutModal';
 import { getProducts } from '../services/api';
 import { Product } from '../types';
 import { useCart } from '../context/CartContext';
@@ -32,6 +33,7 @@ export const CatalogScreen: React.FC = () => {
   // Modals state
   const [cartVisible, setCartVisible] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
+  const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   const loadData = async () => {
@@ -81,10 +83,10 @@ export const CatalogScreen: React.FC = () => {
       >
         {/* Editorial Hero Banner */}
         <View style={styles.heroBanner}>
-          <Text style={styles.heroEyebrow}>CRAFTED TO CAPTIVATE</Text>
+          <Text style={styles.heroEyebrow}>AROMA DE LUZ · ALL ABOUT SCENT</Text>
           <Text style={styles.heroTitle}>Sensory Elegance</Text>
           <Text style={styles.heroSubtitle}>
-            Immerse yourself in artisanal scents poured by hand in Lagos.
+            Immerse yourself in artisanal luxury scents poured by hand in Lagos.
           </Text>
 
           {/* Sync indicator banner */}
@@ -194,6 +196,18 @@ export const CatalogScreen: React.FC = () => {
         onOpenAuth={() => {
           setCartVisible(false);
           setAuthVisible(true);
+        }}
+        onOpenCheckout={() => {
+          setCartVisible(false);
+          setCheckoutVisible(true);
+        }}
+      />
+
+      <CheckoutModal
+        visible={checkoutVisible}
+        onClose={() => setCheckoutVisible(false)}
+        onOrderSuccess={(ref) => {
+          console.log('Order placed successfully:', ref);
         }}
       />
 
