@@ -14,13 +14,15 @@ import {
 import { THEME } from '../theme';
 import { useAuth } from '../context/AuthContext';
 
+import { GoogleAuthModal } from './GoogleAuthModal';
+
 interface AuthModalProps {
   visible: boolean;
   onClose: () => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
-  const { user, signIn, signUp, signInWithGoogle, signOut } = useAuth();
+  const { user, signIn, signUp, getGoogleAuthUrl, completeGoogleAuth, signOut } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -29,21 +31,48 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Direct Google OAuth Trigger
+  // In-App Google OAuth State
+  const [googleAuthVisible, setGoogleAuthVisible] = useState(false);
+  const [googleAuthUrl, setGoogleAuthUrl] = useState<string | null>(null);
+
+  // Open In-App Google OAuth Sheet
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
     setLoading(true);
     try {
-      const res = await signInWithGoogle();
-      if (res.success) {
-        setSuccessMessage('Signed in with Google successfully! Bag is now synced.');
-        setTimeout(() => onClose(), 800);
-      } else if (res.error && !res.error.toLowerCase().includes('cancel') && !res.error.toLowerCase().includes('dismiss')) {
-        setErrorMessage(res.error);
+      const res = await getGoogleAuthUrl();
+      if (res.url) {
+        setGoogleAuthUrl(res.url);
+        setGoogleAuthVisible(true);
+      } else {
+        setErrorMessage(res.error || 'Could not initiate Google authentication');
       }
     } catch (e: any) {
       setErrorMessage(e?.message || 'Google sign-in failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle Intercepted Google OAuth Tokens (intercepts localhost:3000 seamlessly)
+  const handleGoogleAuthSuccess = async (tokens: {
+    access_token?: string;
+    refresh_token?: string;
+    code?: string;
+  }) => {
+    setGoogleAuthVisible(false);
+    setLoading(true);
+    try {
+      const res = await completeGoogleAuth(tokens);
+      if (res.success) {
+        setSuccessMessage('Signed in with Google successfully! Bag is now synced.');
+        setTimeout(() => onClose(), 800);
+      } else {
+        setErrorMessage(res.error || 'Google authentication failed');
+      }
+    } catch (e: any) {
+      setErrorMessage(e?.message || 'Google authentication failed');
     } finally {
       setLoading(false);
     }
@@ -274,6 +303,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      {/* In-App Google OAuth Sheet (intercepts localhost:3000 redirects seamlessly) */}
+      <GoogleAuthModal
+        visible={googleAuthVisible}
+        authUrl={googleAuthUrl}
+        onClose={() => setGoogleAuthVisible(false)}
+        onSuccess={handleGoogleAuthSuccess}
+      />
     </Modal>
   );
 };
