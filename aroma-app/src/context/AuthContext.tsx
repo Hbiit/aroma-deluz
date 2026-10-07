@@ -90,7 +90,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     initAuth();
 
     // Listen to Supabase state changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         const activeUser: User = {
           id: session.user.id,
@@ -99,8 +99,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         setUser(activeUser);
         AsyncStorage.setItem(STORAGE_USER_KEY, JSON.stringify(activeUser));
-      } else if (!user) {
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
+        AsyncStorage.removeItem(STORAGE_USER_KEY);
       }
       setLoading(false);
     });
@@ -184,6 +185,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.success && json.user) {
+        if (json.session?.access_token && json.session?.refresh_token) {
+          await supabase.auth.setSession({
+            access_token: json.session.access_token,
+            refresh_token: json.session.refresh_token,
+          }).catch(() => {});
+        }
         setUser(json.user);
         await AsyncStorage.setItem(STORAGE_USER_KEY, JSON.stringify(json.user));
         return { success: true };
@@ -216,7 +223,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.success && json.user) {
-        await supabase.auth.signInWithPassword({ email: cleanEmail, password }).catch(() => {});
+        if (json.session?.access_token && json.session?.refresh_token) {
+          await supabase.auth.setSession({
+            access_token: json.session.access_token,
+            refresh_token: json.session.refresh_token,
+          }).catch(() => {});
+        } else {
+          await supabase.auth.signInWithPassword({ email: cleanEmail, password }).catch(() => {});
+        }
         setUser(json.user);
         await AsyncStorage.setItem(STORAGE_USER_KEY, JSON.stringify(json.user));
         return { success: true };
@@ -269,13 +283,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       // On Native Mobile (Android APK & iOS)
-      const redirectUrl = 'aromadeluz://auth/callback';
+      // Route through production website OAuth callback to eliminate localhost:3000 redirects
+      const deepLink = 'aromadeluz://auth/callback';
+      const webRedirectUrl = `https://aroma-deluz.vercel.app/auth/callback?next=${encodeURIComponent(deepLink)}`;
 
-      // Request OAuth URL from Supabase with mobile deep link redirect
+      // Request OAuth URL from Supabase with authorized web callback
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: redirectUrl,
+          redirectTo: webRedirectUrl,
           skipBrowserRedirect: true,
         },
       });
@@ -284,8 +300,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { success: false, error: error?.message || 'Could not initiate Google authentication' };
       }
 
-      // Open official Google authentication session inside secure in-app tab
-      const authResult = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      // Open official Google authentication session inside secure in-app tab listening for deepLink
+      const authResult = await WebBrowser.openAuthSessionAsync(data.url, deepLink);
 
       if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
         return { success: false, error: 'Sign in was cancelled' };
@@ -365,7 +381,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // 4. Helper to get OAuth URL for in-app Google Auth Modal
   const getGoogleAuthUrl = async (): Promise<{ url?: string; error?: string }> => {
     try {
-      const redirectUrl = 'aromadeluz://auth/callback';
+      const deepLink = 'aromadeluz://auth/callback';
+      const redirectUrl = `https://aroma-deluz.vercel.app/auth/callback?next=${encodeURIComponent(deepLink)}`;
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

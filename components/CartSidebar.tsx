@@ -38,7 +38,9 @@ export function CartSidebar() {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gold/15">
-          <h3 className="font-serif text-xl text-purple-ink">Your Cart ({totalItems})</h3>
+          <h3 className="font-serif text-xl text-purple-ink">
+            Your Cart ({items.length} {items.length === 1 ? 'item' : 'items'}{totalItems > items.length ? ` · ${totalItems} pcs` : ''})
+          </h3>
           <button onClick={closeCart} className="text-2xl text-purple-ink hover:text-gold transition-colors" aria-label="Close cart">×</button>
         </div>
 

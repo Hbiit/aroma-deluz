@@ -59,7 +59,7 @@ export const CartModal: React.FC<CartModalProps> = ({
               <Text style={styles.headerTitle}>YOUR SHOPPING BAG</Text>
               <Text style={styles.brandTagline}>AROMA DE LUZ · ALL ABOUT SCENT</Text>
               <Text style={styles.itemCountText}>
-                {totalItems} {totalItems === 1 ? 'ITEM' : 'ITEMS'}
+                {items.length} {items.length === 1 ? 'ITEM' : 'ITEMS'}{totalItems > items.length ? ` · ${totalItems} PCS` : ''}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>

@@ -143,6 +143,12 @@ export const CartScreen: React.FC<CartScreenProps> = ({
           {/* Summary Box */}
           <View style={styles.summaryCard}>
             <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>ITEMS IN BAG</Text>
+              <Text style={styles.summaryVal}>
+                {items.length} {items.length === 1 ? 'item' : 'items'}{totalItems > items.length ? ` (${totalItems} pcs)` : ''}
+              </Text>
+            </View>
+            <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>SUBTOTAL</Text>
               <Text style={styles.summaryVal}>{totalFormatted}</Text>
             </View>

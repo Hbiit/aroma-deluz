@@ -24,17 +24,28 @@ export async function GET(req: NextRequest) {
           fallbackCarts.set(userId, cart);
           return NextResponse.json({ success: true, items: cart });
         }
+        if (error) {
+          console.warn('Error fetching user cart from Supabase admin:', error.message);
+        }
       } catch (err) {
         console.warn('Error fetching user cart from Supabase admin:', err);
       }
     }
 
-    // Fallback to local map if service client not configured or errored
-    const items = fallbackCarts.get(userId) || [];
-    return NextResponse.json({ success: true, items });
+    // Fallback to local memory cache if present
+    if (fallbackCarts.has(userId)) {
+      const items = fallbackCarts.get(userId) || [];
+      return NextResponse.json({ success: true, items });
+    }
+
+    // If Supabase failed and no cached cart exists, report service unavailable so client keeps its local state
+    return NextResponse.json(
+      { error: 'Cart service temporarily unavailable', items: [] },
+      { status: 503 }
+    );
   } catch (error: any) {
     return NextResponse.json(
-      { error: error?.message || 'Failed to fetch cart' },
+      { error: error?.message || 'Failed to fetch cart', items: [] },
       { status: 500 }
     );
   }
@@ -49,7 +60,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'userId is required' }, { status: 400 });
     }
 
-    const cartItems = Array.isArray(items) ? items : [];
+    const rawItems = Array.isArray(items) ? items : [];
+
+    // Deduplicate and sanitize items
+    const itemMap = new Map<string, any>();
+    rawItems.forEach((i: any) => {
+      if (!i) return;
+      const key = i.slug || i.id;
+      if (!key) return;
+
+      const cleanItem = {
+        id: i.id || key,
+        slug: i.slug || key,
+        name: i.name || 'Artisanal Creation',
+        price_kobo: typeof i.price_kobo === 'number' ? i.price_kobo : 0,
+        image_url: i.image_url || '/product-lamour.jpg',
+        qty: Math.max(1, typeof i.qty === 'number' ? i.qty : 1),
+      };
+
+      if (itemMap.has(key)) {
+        const existing = itemMap.get(key);
+        existing.qty = Math.max(existing.qty, cleanItem.qty);
+      } else {
+        itemMap.set(key, cleanItem);
+      }
+    });
+
+    const cartItems = Array.from(itemMap.values());
     fallbackCarts.set(userId, cartItems);
 
     const supabase = createServiceRoleClient();

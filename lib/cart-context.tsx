@@ -20,6 +20,7 @@ interface CartContextType {
   updateQty: (id: string, delta: number) => void;
   clearCart: () => void;
   totalItems: number;
+  distinctItems: number;
   totalKobo: number;
   totalAmount: number;
   totalFormatted: string;
@@ -36,6 +37,46 @@ const CartContext = createContext<CartContextType | null>(null);
 
 const GUEST_STORAGE_KEY = 'aroma_guest_cart';
 
+// Safe merge utility that combines local and remote carts without dropping any item
+function mergeCartItems(local: CartItem[], remote: CartItem[]): CartItem[] {
+  const map = new Map<string, CartItem>();
+
+  const getCleanItem = (i: any): CartItem => ({
+    id: i.id || i.slug,
+    slug: i.slug || i.id,
+    name: i.name || 'Artisanal Creation',
+    price_kobo: typeof i.price_kobo === 'number' ? i.price_kobo : 0,
+    image_url: i.image_url || '/product-lamour.jpg',
+    qty: Math.max(1, typeof i.qty === 'number' ? i.qty : 1),
+  });
+
+  // 1. Add all local items
+  (Array.isArray(local) ? local : []).forEach((item) => {
+    if (!item) return;
+    const clean = getCleanItem(item);
+    const key = clean.slug || clean.id;
+    map.set(key, clean);
+  });
+
+  // 2. Merge remote items
+  (Array.isArray(remote) ? remote : []).forEach((rItem) => {
+    if (!rItem) return;
+    const cleanRemote = getCleanItem(rItem);
+    const key = cleanRemote.slug || cleanRemote.id;
+    if (map.has(key)) {
+      const existing = map.get(key)!;
+      existing.qty = Math.max(existing.qty, cleanRemote.qty);
+      if (!existing.image_url && cleanRemote.image_url) existing.image_url = cleanRemote.image_url;
+      if (!existing.name && cleanRemote.name) existing.name = cleanRemote.name;
+      if (!existing.price_kobo && cleanRemote.price_kobo) existing.price_kobo = cleanRemote.price_kobo;
+    } else {
+      map.set(key, cleanRemote);
+    }
+  });
+
+  return Array.from(map.values());
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [items, setItems] = useState<CartItem[]>([]);
@@ -44,26 +85,44 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [lastAddedItem, setLastAddedItem] = useState<CartItem | null>(null);
   const [mounted, setMounted] = useState(false);
 
-  const activeUserId = user?.id || null;
+  // Synchronously resolve active user ID from state or persistent storage
+  const getResolvedUserId = useCallback((): string | null => {
+    if (user?.id) return user.id;
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('aroma_active_user') || localStorage.getItem('aroma_demo_user');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed?.id) return parsed.id;
+        }
+      } catch {}
+    }
+    return null;
+  }, [user]);
+
+  const activeUserId = getResolvedUserId();
+  const lastMutationTimeRef = useRef<number>(0);
 
   // Immediate synchronous helper to persist cart to localStorage
   const saveCartToStorage = useCallback(
     (newItems: CartItem[]) => {
       if (typeof window === 'undefined') return;
       try {
-        const storageKey = activeUserId ? `aroma_cart_${activeUserId}` : GUEST_STORAGE_KEY;
+        const currentUid = getResolvedUserId();
+        const storageKey = currentUid ? `aroma_cart_${currentUid}` : GUEST_STORAGE_KEY;
         localStorage.setItem(storageKey, JSON.stringify(newItems));
       } catch (e) {
         console.warn('Failed to persist cart to storage:', e);
       }
     },
-    [activeUserId]
+    [getResolvedUserId]
   );
 
   // Sync cart to server for signed-in user
   const syncToServer = useCallback(
     async (userId: string, cartItems: CartItem[]) => {
       if (!userId) return;
+      lastMutationTimeRef.current = Date.now();
       try {
         await fetch('/api/cart', {
           method: 'POST',
@@ -100,7 +159,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     async function loadCart() {
       try {
-        const userKey = activeUserId ? `aroma_cart_${activeUserId}` : null;
+        const currentUid = getResolvedUserId();
+        const userKey = currentUid ? `aroma_cart_${currentUid}` : null;
         let loadedItems: CartItem[] = [];
 
         if (userKey) {
@@ -117,51 +177,42 @@ export function CartProvider({ children }: { children: ReactNode }) {
           const parsedGuest = JSON.parse(guestStored);
           if (Array.isArray(parsedGuest) && parsedGuest.length > 0) {
             if (userKey) {
-              // Merge guest items into signed-in user cart
-              parsedGuest.forEach((g: CartItem) => {
-                const existing = loadedItems.find((u) => u.id === g.id || u.slug === g.slug);
-                if (existing) {
-                  existing.qty += g.qty;
-                } else {
-                  loadedItems.push(g);
-                }
-              });
+              loadedItems = mergeCartItems(loadedItems, parsedGuest);
               localStorage.removeItem(GUEST_STORAGE_KEY);
               localStorage.setItem(userKey, JSON.stringify(loadedItems));
-            } else {
+            } else if (loadedItems.length === 0) {
               loadedItems = parsedGuest;
             }
           }
         }
 
-        // If user is logged in, sync with remote server cart
-        if (activeUserId) {
-          const remoteItems = await fetchFromServer(activeUserId);
-          if (remoteItems && isMounted) {
-            if (remoteItems.length > 0 && loadedItems.length === 0) {
-              loadedItems = remoteItems;
-            } else if (loadedItems.length > 0) {
-              // Merge local and remote
-              const mergedMap = new Map<string, CartItem>();
-              loadedItems.forEach((item) => mergedMap.set(item.id, { ...item }));
-              remoteItems.forEach((rItem) => {
-                if (mergedMap.has(rItem.id)) {
-                  // Keep highest quantity
-                  const cur = mergedMap.get(rItem.id)!;
-                  cur.qty = Math.max(cur.qty, rItem.qty);
-                } else {
-                  mergedMap.set(rItem.id, rItem);
-                }
-              });
-              loadedItems = Array.from(mergedMap.values());
-            }
-            saveCartToStorage(loadedItems);
-            syncToServer(activeUserId, loadedItems);
-          }
+        // Display locally loaded items immediately (zero blank screen / zero empty flash)
+        if (isMounted && loadedItems.length > 0) {
+          setItems(loadedItems);
         }
 
-        if (isMounted) {
-          setItems(loadedItems);
+        // If user is logged in, sync with remote server cart
+        if (currentUid) {
+          const remoteItems = await fetchFromServer(currentUid);
+          if (remoteItems && isMounted) {
+            let finalItems: CartItem[];
+            if (remoteItems.length > 0) {
+              finalItems = mergeCartItems(loadedItems, remoteItems);
+            } else {
+              // Remote is empty, keep local items
+              finalItems = loadedItems;
+            }
+
+            if (finalItems.length > 0) {
+              saveCartToStorage(finalItems);
+              syncToServer(currentUid, finalItems);
+              setItems(finalItems);
+            } else if (loadedItems.length === 0) {
+              setItems([]);
+            }
+          }
+        } else if (isMounted && loadedItems.length === 0) {
+          setItems([]);
         }
       } catch (err) {
         console.warn('Error reading cart:', err);
@@ -175,7 +226,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [activeUserId, fetchFromServer, saveCartToStorage, syncToServer]);
+  }, [activeUserId, fetchFromServer, getResolvedUserId, saveCartToStorage, syncToServer]);
 
   // Real-time synchronization polling & visibility change listener
   useEffect(() => {
@@ -185,15 +236,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     const pullLatestCart = async () => {
       if (document.hidden) return;
+      // Skip if user recently performed an action locally (prevent race conditions)
+      if (Date.now() - lastMutationTimeRef.current < 2500) return;
+
       const remote = await fetchFromServer(activeUserId);
       if (!remote || !isSubscribed) return;
 
       setItems((prev) => {
-        const prevKey = JSON.stringify(prev.map(i => ({ id: i.id, qty: i.qty })));
-        const nextKey = JSON.stringify(remote.map(i => ({ id: i.id, qty: i.qty })));
-        if (prevKey !== nextKey) {
-          saveCartToStorage(remote);
-          return remote;
+        // If remote returned items, merge safely
+        if (remote.length > 0) {
+          const merged = mergeCartItems(prev, remote);
+          const prevKey = JSON.stringify(prev.map(i => ({ id: i.id, qty: i.qty })));
+          const nextKey = JSON.stringify(merged.map(i => ({ id: i.id, qty: i.qty })));
+          if (prevKey !== nextKey) {
+            saveCartToStorage(merged);
+            return merged;
+          }
         }
         return prev;
       });
@@ -345,6 +403,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [activeUserId]);
 
   const totalItems = items.reduce((sum, i) => sum + (i.qty || 1), 0);
+  const distinctItems = items.length;
   const totalKobo = items.reduce((sum, i) => sum + (i.price_kobo || 0) * (i.qty || 1), 0);
   const totalAmount = totalKobo;
   const totalFormatted = formatNaira(totalKobo);
@@ -363,6 +422,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         updateQty,
         clearCart,
         totalItems,
+        distinctItems,
         totalKobo,
         totalAmount,
         totalFormatted,

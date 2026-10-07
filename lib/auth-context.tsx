@@ -28,8 +28,18 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const STORAGE_ACTIVE_USER_KEY = 'aroma_active_user';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(STORAGE_ACTIVE_USER_KEY) || localStorage.getItem('aroma_demo_user');
+        if (stored) return JSON.parse(stored);
+      } catch {}
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
   const [, startTransition] = useTransition();
@@ -54,28 +64,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Live Supabase Mode
     setIsDemo(false);
-    supabase.auth.getUser().then(({ data: { user: sbUser } }) => {
-      if (sbUser) {
-        const meta = sbUser.user_metadata || {};
-        setUser({
-          id: sbUser.id,
-          email: sbUser.email || '',
-          fullName: meta.full_name || sbUser.email?.split('@')[0],
+
+    // 1. Restore from active user cache first if available
+    const cachedStr = localStorage.getItem(STORAGE_ACTIVE_USER_KEY);
+    if (cachedStr) {
+      try {
+        const parsed = JSON.parse(cachedStr);
+        if (parsed?.id) {
+          setUser(parsed);
+        }
+      } catch {}
+    }
+
+    // 2. Fetch session from Supabase
+    supabase.auth.getSession().then((res: any) => {
+      const session = res?.data?.session;
+      if (session?.user) {
+        const meta = session.user.user_metadata || {};
+        const activeUser: AuthUser = {
+          id: session.user.id,
+          email: session.user.email || '',
+          fullName: meta.full_name || session.user.email?.split('@')[0],
           avatarUrl: meta.avatar_url,
           phone: meta.phone || '',
           address: meta.address || '',
           city: meta.city || 'Lagos',
           state: meta.state || 'Lagos',
-        });
+        };
+        setUser(activeUser);
+        localStorage.setItem(STORAGE_ACTIVE_USER_KEY, JSON.stringify(activeUser));
+      } else if (!cachedStr) {
+        setUser(null);
       }
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
       startTransition(() => {
         if (session?.user) {
           const meta = session.user.user_metadata || {};
-          setUser({
+          const activeUser: AuthUser = {
             id: session.user.id,
             email: session.user.email || '',
             fullName: meta.full_name || session.user.email?.split('@')[0],
@@ -84,10 +112,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             address: meta.address || '',
             city: meta.city || 'Lagos',
             state: meta.state || 'Lagos',
-          });
-        } else {
+          };
+          setUser(activeUser);
+          localStorage.setItem(STORAGE_ACTIVE_USER_KEY, JSON.stringify(activeUser));
+        } else if (event === 'SIGNED_OUT') {
           setUser(null);
+          localStorage.removeItem(STORAGE_ACTIVE_USER_KEY);
+          localStorage.removeItem('aroma_demo_user');
         }
+        setLoading(false);
       });
     });
 
@@ -111,12 +144,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         state: 'Lagos',
       };
       localStorage.setItem('aroma_demo_user', JSON.stringify(demoUser));
+      localStorage.setItem(STORAGE_ACTIVE_USER_KEY, JSON.stringify(demoUser));
       setUser(demoUser);
       return {};
     }
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
+    if (data?.user) {
+      const meta = data.user.user_metadata || {};
+      const activeUser: AuthUser = {
+        id: data.user.id,
+        email: data.user.email || '',
+        fullName: meta.full_name || data.user.email?.split('@')[0],
+        avatarUrl: meta.avatar_url,
+        phone: meta.phone || '',
+        address: meta.address || '',
+        city: meta.city || 'Lagos',
+        state: meta.state || 'Lagos',
+      };
+      setUser(activeUser);
+      localStorage.setItem(STORAGE_ACTIVE_USER_KEY, JSON.stringify(activeUser));
+    }
     return {};
   };
 
@@ -139,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return {};
     }
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -149,6 +198,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     });
     if (error) return { error: error.message };
+    if (data?.user) {
+      const activeUser: AuthUser = {
+        id: data.user.id,
+        email: data.user.email || email,
+        fullName: fullName || email.split('@')[0],
+      };
+      setUser(activeUser);
+      localStorage.setItem(STORAGE_ACTIVE_USER_KEY, JSON.stringify(activeUser));
+    }
     return {};
   };
 
@@ -166,6 +224,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         state: 'Lagos',
       };
       localStorage.setItem('aroma_demo_user', JSON.stringify(demoUser));
+      localStorage.setItem(STORAGE_ACTIVE_USER_KEY, JSON.stringify(demoUser));
       setUser(demoUser);
       return {};
     }
@@ -188,6 +247,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const updated = { ...user, ...data };
       setUser(updated);
       localStorage.setItem('aroma_demo_user', JSON.stringify(updated));
+      localStorage.setItem(STORAGE_ACTIVE_USER_KEY, JSON.stringify(updated));
       return {};
     }
 
@@ -204,19 +264,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (error) return { error: error.message };
 
-    setUser((prev) => (prev ? { ...prev, ...data } : null));
+    setUser((prev) => {
+      const next = prev ? { ...prev, ...data } : null;
+      if (next) localStorage.setItem(STORAGE_ACTIVE_USER_KEY, JSON.stringify(next));
+      return next;
+    });
     return {};
   };
 
   const signOut = async () => {
     const supabase = createClient();
-    if (!supabase) {
-      localStorage.removeItem('aroma_demo_user');
-      setUser(null);
-      return;
+    localStorage.removeItem(STORAGE_ACTIVE_USER_KEY);
+    localStorage.removeItem('aroma_demo_user');
+    if (supabase) {
+      await supabase.auth.signOut().catch(() => {});
     }
-
-    await supabase.auth.signOut();
     setUser(null);
   };
 

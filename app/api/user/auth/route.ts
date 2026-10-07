@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       if (supabaseAdmin) {
         // Check if user already exists
         const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-        const existing = existingUsers?.users?.find((u) => u.email?.toLowerCase() === cleanEmail);
+        const existing = existingUsers?.users?.find((u: any) => u.email?.toLowerCase() === cleanEmail);
 
         if (existing) {
           return NextResponse.json({ error: 'An account with this email already exists. Please sign in.' }, { status: 400 });
@@ -104,7 +104,7 @@ export async function POST(request: Request) {
           // If error is email not confirmed and admin client available, auto-confirm it
           if (error.message.toLowerCase().includes('not confirmed') && supabaseAdmin) {
             const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-            const matched = users?.users?.find((u) => u.email?.toLowerCase() === cleanEmail);
+            const matched = users?.users?.find((u: any) => u.email?.toLowerCase() === cleanEmail);
             if (matched) {
               await supabaseAdmin.auth.admin.updateUserById(matched.id, { email_confirm: true });
               // Retry sign in
@@ -154,7 +154,7 @@ export async function POST(request: Request) {
 
       if (supabaseAdmin) {
         const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-        let user = users?.users?.find((u) => u.email?.toLowerCase() === cleanEmail);
+        let user = users?.users?.find((u: any) => u.email?.toLowerCase() === cleanEmail);
 
         if (!user) {
           // Create confirmed Google user
