@@ -4,6 +4,16 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 // In-memory fallback if Supabase is temporarily unreachable
 const fallbackCarts = new Map<string, any[]>();
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);

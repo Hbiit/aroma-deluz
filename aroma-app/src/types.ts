@@ -14,6 +14,10 @@ export interface Product {
   rating?: number;
   review_count?: number;
   featured?: boolean;
+  collection?: string;
+  scent_notes?: string[];
+  stock?: number;
+  created_at?: string;
 }
 
 export interface CartItem {
