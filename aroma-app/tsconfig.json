@@ -1,8 +1,26 @@
 {
-  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true,
+    "target": "esnext",
+    "module": "esnext",
+    "lib": ["dom", "esnext"],
+    "allowJs": true,
     "jsx": "react-native",
-    "esModuleInterop": true
-  }
+    "noEmit": true,
+    "isolatedModules": true,
+    "strict": true,
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "*": ["*", "../../aroma-app/node_modules/*"]
+    },
+    "typeRoots": [
+      "../../aroma-app/node_modules/@types"
+    ]
+  },
+  "include": [
+    "src/**/*",
+    "App.tsx"
+  ]
 }
