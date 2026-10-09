@@ -44,6 +44,15 @@ function matchesCartItem(item: CartItem, id: string): boolean {
   return item.id === id || (!!item.slug && item.slug === id);
 }
 
+// Stable identity for a cart line (slug when available, otherwise id).
+function cartKey(item: CartItem): string {
+  return (item.slug || item.id || '').toString();
+}
+
+function sameCartLine(a: CartItem, b: CartItem): boolean {
+  return cartKey(a) === cartKey(b);
+}
+
 // Safe merge utility that combines local and remote carts without dropping any item
 function mergeCartItems(local: CartItem[], remote: CartItem[]): CartItem[] {
   const map = new Map<string, CartItem>();
@@ -133,24 +142,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [getResolvedUserId]
   );
 
-  // Sync cart to server for signed-in user (wholesale)
-  const syncToServer = useCallback(
-    async (userId: string, cartItems: CartItem[]) => {
-      if (!userId) return;
-      lastMutationTimeRef.current = Date.now();
-      try {
-        await fetch('/api/cart', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, action: 'sync', items: cartItems }),
-        });
-      } catch (err) {
-        console.warn('Failed to sync cart to server:', err);
-      }
-    },
-    []
-  );
-
   const performGranularSync = useCallback(
     async (userId: string, action: 'add' | 'remove' | 'update', item: any) => {
       if (!userId) return;
@@ -195,59 +186,62 @@ export function CartProvider({ children }: { children: ReactNode }) {
       try {
         const currentUid = getResolvedUserId();
         const userKey = currentUid ? `aroma_cart_${currentUid}` : null;
-        let loadedItems: CartItem[] = [];
+        let storedItems: CartItem[] = [];
 
         if (userKey) {
           const stored = localStorage.getItem(userKey);
           if (stored) {
             const parsed = JSON.parse(stored);
-            if (Array.isArray(parsed)) loadedItems = parsed;
+            if (Array.isArray(parsed)) storedItems = parsed.filter(Boolean);
           }
         }
 
-        // Check for guest cart items to migrate or use
+        // Cart built while signed out. It is a one-shot migration: it may only
+        // be pushed *up* to the account, never used to re-add items the account
+        // has already removed elsewhere.
+        let guestItems: CartItem[] = [];
         const guestStored = localStorage.getItem(GUEST_STORAGE_KEY);
         if (guestStored) {
           const parsedGuest = JSON.parse(guestStored);
-          if (Array.isArray(parsedGuest) && parsedGuest.length > 0) {
-            if (userKey) {
-              loadedItems = mergeCartItems(loadedItems, parsedGuest);
-              localStorage.removeItem(GUEST_STORAGE_KEY);
-              localStorage.setItem(userKey, JSON.stringify(loadedItems));
-            } else if (loadedItems.length === 0) {
-              loadedItems = parsedGuest;
-            }
+          if (Array.isArray(parsedGuest)) guestItems = parsedGuest.filter(Boolean);
+        }
+
+        if (!currentUid) {
+          if (isMounted) setItems(storedItems.length > 0 ? storedItems : guestItems);
+          return;
+        }
+
+        // Show the cached cart instantly (zero blank screen / zero empty flash)
+        const cachedItems = mergeCartItems(storedItems, guestItems);
+        if (isMounted && cachedItems.length > 0) {
+          setItems(cachedItems);
+        }
+
+        const remoteItems = await fetchFromServer(currentUid);
+        if (!remoteItems || !isMounted) return; // server unreachable — keep the cached cart
+
+        // The account cart lives on the server. Anything the server no longer
+        // carries was removed on another device (e.g. the mobile app), so a
+        // reload must never union it back in — that is what made removals made
+        // on the phone reappear here and on the phone. Only the signed-out
+        // guest cart is migrated, via explicit per-item adds.
+        const pendingGuest = guestItems.filter(
+          (g) => !remoteItems.some((r) => sameCartLine(r, g))
+        );
+        if (pendingGuest.length > 0) {
+          localStorage.removeItem(GUEST_STORAGE_KEY);
+          for (const g of pendingGuest) {
+            performGranularSync(currentUid, 'add', {
+              id: g.id || g.slug,
+              slug: g.slug,
+              qty: Math.max(1, g.qty || 1),
+            });
           }
         }
 
-        // Display locally loaded items immediately (zero blank screen / zero empty flash)
-        if (isMounted && loadedItems.length > 0) {
-          setItems(loadedItems);
-        }
-
-        // If user is logged in, sync with remote server cart
-        if (currentUid) {
-          const remoteItems = await fetchFromServer(currentUid);
-          if (remoteItems && isMounted) {
-            let finalItems: CartItem[];
-            if (remoteItems.length > 0) {
-              finalItems = mergeCartItems(loadedItems, remoteItems);
-            } else {
-              // Remote is empty, keep local items
-              finalItems = loadedItems;
-            }
-
-            if (finalItems.length > 0) {
-              saveCartToStorage(finalItems);
-              syncToServer(currentUid, finalItems);
-              setItems(finalItems);
-            } else if (loadedItems.length === 0) {
-              setItems([]);
-            }
-          }
-        } else if (isMounted && loadedItems.length === 0) {
-          setItems([]);
-        }
+        const finalItems = mergeCartItems(remoteItems, pendingGuest);
+        saveCartToStorage(finalItems);
+        setItems(finalItems);
       } catch (err) {
         console.warn('Error reading cart:', err);
       } finally {
@@ -260,7 +254,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [activeUserId, fetchFromServer, getResolvedUserId, saveCartToStorage, syncToServer]);
+  }, [activeUserId, fetchFromServer, getResolvedUserId, saveCartToStorage, performGranularSync]);
 
   // Real-time synchronization polling & visibility change listener
   useEffect(() => {
