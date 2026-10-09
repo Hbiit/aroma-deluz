@@ -11,6 +11,26 @@ const corsHeaders = {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_QTY = 99;
 
+/**
+ * Deletion tombstones.
+ *
+ * A whole-cart push (`sync`/`merge`, or the legacy "replace" payload) is a
+ * snapshot of what one device *believes* the cart to be. Applying it blindly
+ * re-inserts rows that another device deleted, which is how a removal made in
+ * the mobile app used to come back.
+ *
+ * So every removal is recorded here, keyed by product id. Snapshot-style
+ * writers skip products removed within TOMBSTONE_WINDOW_MS, while the explicit
+ * per-item writes (`add`/`update`/`set`) clear the tombstone immediately — a
+ * deliberate re-add is never blocked, an accidental one cannot happen.
+ *
+ * Stored in the auth user's metadata so no schema migration is needed; the key
+ * is merged rather than replaced, so the legacy `cart` key written by older
+ * builds survives.
+ */
+const TOMBSTONE_KEY = 'cart_tombstones';
+const TOMBSTONE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 function json(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: corsHeaders });
 }
@@ -52,6 +72,90 @@ async function resolveProductId(
   }
 
   return null;
+}
+
+type ServiceClient = NonNullable<ReturnType<typeof createServiceRoleClient>>;
+type TombstoneMap = Record<string, string>;
+
+/** Read the user's deletion tombstones plus the rest of their metadata. */
+async function readCartState(
+  supabase: ServiceClient,
+  userId: string
+): Promise<{ tombstones: TombstoneMap; metadata: Record<string, unknown> }> {
+  try {
+    const { data, error } = await supabase.auth.admin.getUserById(userId);
+    if (error || !data?.user) return { tombstones: {}, metadata: {} };
+    const metadata = (data.user.user_metadata || {}) as Record<string, unknown>;
+    const raw = metadata[TOMBSTONE_KEY];
+    const tombstones: TombstoneMap =
+      raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? (Object.fromEntries(
+            Object.entries(raw as Record<string, unknown>).filter(
+              ([productId, at]) => UUID_RE.test(productId) && typeof at === 'string'
+            )
+          ) as TombstoneMap)
+        : {};
+    return { tombstones, metadata };
+  } catch (error: any) {
+    console.warn('Could not read cart tombstones:', error?.message || error);
+    return { tombstones: {}, metadata: {} };
+  }
+}
+
+/** Products whose removal is recent enough that snapshots must not undo it. */
+function activeTombstones(tombstones: TombstoneMap, now: number): Set<string> {
+  const active = new Set<string>();
+  for (const [productId, at] of Object.entries(tombstones)) {
+    const parsed = Date.parse(at);
+    if (Number.isFinite(parsed) && now - parsed < TOMBSTONE_WINDOW_MS) active.add(productId);
+  }
+  return active;
+}
+
+/**
+ * Persist tombstones, pruning entries that fell outside the protection window
+ * so the metadata blob cannot grow forever.
+ */
+async function writeTombstones(
+  supabase: ServiceClient,
+  userId: string,
+  tombstones: TombstoneMap,
+  metadata: Record<string, unknown>,
+  now = Date.now()
+) {
+  const kept: TombstoneMap = {};
+  for (const [productId, at] of Object.entries(tombstones)) {
+    const parsed = Date.parse(at);
+    if (Number.isFinite(parsed) && now - parsed < TOMBSTONE_WINDOW_MS) kept[productId] = at;
+  }
+  const { error } = await supabase.auth.admin.updateUserById(userId, {
+    user_metadata: { ...metadata, [TOMBSTONE_KEY]: kept },
+  });
+  if (error) console.warn('Could not persist cart tombstones:', error.message);
+}
+
+/** Record that these products were just removed. */
+async function tombstoneProducts(
+  supabase: ServiceClient,
+  userId: string,
+  productIds: string[],
+  now: number
+) {
+  const ids = productIds.filter((id) => UUID_RE.test(id));
+  if (ids.length === 0) return;
+  const { tombstones, metadata } = await readCartState(supabase, userId);
+  const at = new Date(now).toISOString();
+  for (const id of ids) tombstones[id] = at;
+  await writeTombstones(supabase, userId, tombstones, metadata, now);
+}
+
+/** A deliberate per-item write revives the product, so drop its tombstone. */
+async function reviveProduct(supabase: ServiceClient, userId: string, productId: string) {
+  if (!UUID_RE.test(productId)) return;
+  const { tombstones, metadata } = await readCartState(supabase, userId);
+  if (!tombstones[productId]) return;
+  delete tombstones[productId];
+  await writeTombstones(supabase, userId, tombstones, metadata);
 }
 
 export async function OPTIONS() {
@@ -145,6 +249,10 @@ export async function POST(req: NextRequest) {
         );
       if (error) return json({ error: error.message }, 500);
 
+      // Explicit per-item write: the user (or their app) means it, so a
+      // previous removal of this product must not block it.
+      await reviveProduct(supabase, userId, productId);
+
       return json({ success: true, productId, qty, updated_at: now });
     }
 
@@ -163,6 +271,10 @@ export async function POST(req: NextRequest) {
         .eq('product_id', productId);
       if (error) return json({ error: error.message }, 500);
 
+      // Remember the removal: a stale snapshot pushed by another device (or an
+      // older build) must not bring this line back.
+      await tombstoneProducts(supabase, userId, [productId], Date.parse(now));
+
       return json({ success: true, updated_at: now });
     }
 
@@ -170,12 +282,21 @@ export async function POST(req: NextRequest) {
       // Idempotent union: keep the larger quantity per product.
       // Clients push their whole (already merged) cart here on load, so adding
       // quantities would inflate the cart on every page load.
+      //
+      // Snapshot semantics: products removed elsewhere stay removed. This is
+      // reported back in `skipped` rather than silently dropped.
       const rawItems = Array.isArray(items) ? items : [];
       const rejected: string[] = [];
+      const skipped: string[] = [];
+      const blocked = activeTombstones((await readCartState(supabase, userId)).tombstones, Date.parse(now));
       for (const i of rawItems) {
         const productId = await resolveProductId(supabase, i);
         if (!productId) {
           rejected.push(String(i?.id || i?.slug || ''));
+          continue;
+        }
+        if (blocked.has(productId)) {
+          skipped.push(productId);
           continue;
         }
         const { data: existing } = await supabase
@@ -193,12 +314,17 @@ export async function POST(req: NextRequest) {
           );
         if (error) return json({ error: error.message }, 500);
       }
-      return json({ success: true, rejected, updated_at: now });
+      return json({ success: true, rejected, skipped, updated_at: now });
     }
 
     // Backwards compatibility: wholesale replace when items are sent without an action
     const rawItems = Array.isArray(items) ? items : Array.isArray(body) ? body : null;
     if (!rawItems) return json({ error: 'Invalid action or payload' }, 400);
+
+    // A wholesale replace is still a snapshot of one device's view: it may
+    // empty the cart, but it must not re-add lines removed on another device.
+    const skipped: string[] = [];
+    const blocked = activeTombstones((await readCartState(supabase, userId)).tombstones, Date.parse(now));
 
     const { error: delError } = await supabase.from('cart_items').delete().eq('user_id', userId);
     if (delError) return json({ error: delError.message }, 500);
@@ -206,15 +332,18 @@ export async function POST(req: NextRequest) {
     const inserts: any[] = [];
     for (const i of rawItems) {
       const productId = await resolveProductId(supabase, i);
-      if (productId) {
-        inserts.push({ user_id: userId, product_id: productId, qty: clampQty(i?.qty), updated_at: now });
+      if (!productId) continue;
+      if (blocked.has(productId)) {
+        skipped.push(productId);
+        continue;
       }
+      inserts.push({ user_id: userId, product_id: productId, qty: clampQty(i?.qty), updated_at: now });
     }
     if (inserts.length > 0) {
       const { error } = await supabase.from('cart_items').insert(inserts);
       if (error) return json({ error: error.message }, 500);
     }
-    return json({ success: true, updated_at: now });
+    return json({ success: true, skipped, updated_at: now });
   } catch (error: any) {
     console.error('Cart POST error:', error);
     return json({ error: error?.message || 'Failed to modify cart' }, 500);
@@ -230,10 +359,16 @@ export async function DELETE(req: NextRequest) {
     const supabase = createServiceRoleClient();
     if (!supabase) return json({ error: 'Supabase client not initialized' }, 500);
 
+    // Tombstone what is being cleared first, so a device that still has the
+    // old cart in memory cannot silently restore it.
+    const { data: rows } = await supabase.from('cart_items').select('product_id').eq('user_id', userId);
+    const cleared = (rows || []).map((row: any) => String(row.product_id)).filter((id: string) => UUID_RE.test(id));
+    if (cleared.length > 0) await tombstoneProducts(supabase, userId, cleared, Date.now());
+
     const { error } = await supabase.from('cart_items').delete().eq('user_id', userId);
     if (error) return json({ error: error.message }, 500);
 
-    return json({ success: true, items: [] });
+    return json({ success: true, items: [], cleared: cleared.length });
   } catch (error: any) {
     return json({ error: error?.message || 'Failed to clear cart' }, 500);
   }

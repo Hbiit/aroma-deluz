@@ -131,11 +131,11 @@ async function runChecks() {
 
   const productsRes = await fetch(`${API_BASE}/api/products`);
   const products = await productsRes.json();
-  if (!Array.isArray(products) || products.length < 2) {
+  if (!Array.isArray(products) || products.length < 3) {
     throw new Error(`Could not load a catalog from ${API_BASE}/api/products (got ${productsRes.status})`);
   }
-  const [p1, p2] = products;
-  console.log(`Catalog: "${p1.name}" / "${p2.name}"\n`);
+  const [p1, p2, p3] = products;
+  console.log(`Catalog: "${p1.name}" / "${p2.name}" / "${p3.name}"\n`);
 
   await clearCart();
 
@@ -211,6 +211,60 @@ async function runChecks() {
   const badId = await post({ userId: 'demo-user-123', action: 'add', item: { id: p2.id, qty: 1 } });
   check('POST -> 400', badId.status, 400);
   check('error code names the problem', badId.body?.code, 'INVALID_USER_ID');
+
+  // 11. A removal is durable: a stale device pushing a whole-cart snapshot of
+  //     what it still believes the cart to be must not re-add the line. This
+  //     is the failure mode where a phone removal kept coming back.
+  //     p3 has no history earlier in this run, so it stands in for "the lines
+  //     that device really does have".
+  console.log('\n[11] Deletion survives stale whole-cart snapshots');
+  await post({ userId: OWNER, action: 'add', item: { id: p1.id, qty: 1 } });
+  check('setup: line added by an explicit write', qtyBySlug((await readCart()).items), { [p1.slug]: 1 });
+  await post({ userId: OWNER, action: 'remove', item: { id: p1.id, slug: p1.slug } });
+  check('line removed', (await readCart()).items.length, 0);
+
+  const staleSync = await post({
+    userId: OWNER,
+    action: 'sync',
+    items: [{ id: p1.id, slug: p1.slug, qty: 1 }],
+  });
+  check('stale sync push -> 200', staleSync.status, 200);
+  check('stale sync push cannot re-add the line', (await readCart()).items.length, 0);
+  check('stale sync push reports it as skipped', staleSync.body?.skipped, [p1.id]);
+
+  const staleReplace = await post({
+    userId: OWNER,
+    items: [
+      { id: p1.id, slug: p1.slug, qty: 3 },
+      { id: p3.id, slug: p3.slug, qty: 2 },
+    ],
+  });
+  check('legacy snapshot -> 200', staleReplace.status, 200);
+  check('legacy snapshot cannot re-add it either', qtyBySlug((await readCart()).items), { [p3.slug]: 2 });
+  check('legacy snapshot reports it as skipped', staleReplace.body?.skipped, [p1.id]);
+
+  // 12. A deliberate re-add still works — explicit per-item writes revive a line.
+  console.log('\n[12] Deliberate re-add is never blocked');
+  const reAdd = await post({ userId: OWNER, action: 'add', item: { id: p1.id, slug: p1.slug, qty: 2 } });
+  check('re-add -> 200', reAdd.status, 200);
+  check('line is back with the requested quantity', qtyBySlug((await readCart()).items), {
+    [p1.slug]: 2,
+    [p3.slug]: 2,
+  });
+
+  // 13. Clearing the cart is durable too.
+  console.log('\n[13] Clearing the cart cannot be undone by a stale snapshot');
+  await clearCart();
+  const afterClear = await post({
+    userId: OWNER,
+    action: 'sync',
+    items: [
+      { id: p1.id, qty: 1 },
+      { id: p3.id, qty: 1 },
+    ],
+  });
+  check('post-clear snapshot cannot restore the cart', (await readCart()).items.length, 0);
+  check('both lines reported as skipped', afterClear.body?.skipped?.length, 2);
 
   await clearCart();
 
