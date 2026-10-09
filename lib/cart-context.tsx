@@ -37,6 +37,13 @@ const CartContext = createContext<CartContextType | null>(null);
 
 const GUEST_STORAGE_KEY = 'aroma_guest_cart';
 
+// A cart line can be addressed by product id (uuid) or by slug — accept either.
+// Server rows carry both, while the UI passes `item.id`, so matching on only
+// one of the two silently makes ±/remove a no-op.
+function matchesCartItem(item: CartItem, id: string): boolean {
+  return item.id === id || (!!item.slug && item.slug === id);
+}
+
 // Safe merge utility that combines local and remote carts without dropping any item
 function mergeCartItems(local: CartItem[], remote: CartItem[]): CartItem[] {
   const map = new Map<string, CartItem>();
@@ -103,6 +110,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const activeUserId = getResolvedUserId();
   const lastMutationTimeRef = useRef<number>(0);
 
+  // Mirror of `items` so mutators can compute the next cart synchronously
+  // without doing side effects inside a React state updater (React may invoke
+  // an updater more than once, which would double every server write).
+  const itemsRef = useRef<CartItem[]>([]);
+  useEffect(() => {
+    itemsRef.current = Array.isArray(items) ? items : [];
+  }, [items]);
+
   // Immediate synchronous helper to persist cart to localStorage
   const saveCartToStorage = useCallback(
     (newItems: CartItem[]) => {
@@ -118,7 +133,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [getResolvedUserId]
   );
 
-  // Sync cart to server for signed-in user
+  // Sync cart to server for signed-in user (wholesale)
   const syncToServer = useCallback(
     async (userId: string, cartItems: CartItem[]) => {
       if (!userId) return;
@@ -127,10 +142,29 @@ export function CartProvider({ children }: { children: ReactNode }) {
         await fetch('/api/cart', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, items: cartItems }),
+          body: JSON.stringify({ userId, action: 'sync', items: cartItems }),
         });
       } catch (err) {
         console.warn('Failed to sync cart to server:', err);
+      }
+    },
+    []
+  );
+
+  const performGranularSync = useCallback(
+    async (userId: string, action: 'add' | 'remove' | 'update', item: any) => {
+      if (!userId) return;
+      // Register the mutation time so the polling loop cannot overwrite this
+      // change with a snapshot that is still in flight.
+      lastMutationTimeRef.current = Date.now();
+      try {
+        await fetch('/api/cart', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, action, item }),
+        });
+      } catch (err) {
+        console.warn(`Failed to perform ${action} on server:`, err);
       }
     },
     []
@@ -239,19 +273,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // Skip if user recently performed an action locally (prevent race conditions)
       if (Date.now() - lastMutationTimeRef.current < 2500) return;
 
+      const mutationAtStart = lastMutationTimeRef.current;
       const remote = await fetchFromServer(activeUserId);
       if (!remote || !isSubscribed) return;
+      // A local change landed while this snapshot was in flight — it is stale,
+      // so applying it would undo the change the user just made.
+      if (lastMutationTimeRef.current !== mutationAtStart) return;
 
       setItems((prev) => {
-        // If remote returned items, merge safely
-        if (remote.length > 0) {
-          const merged = mergeCartItems(prev, remote);
-          const prevKey = JSON.stringify(prev.map(i => ({ id: i.id, qty: i.qty })));
-          const nextKey = JSON.stringify(merged.map(i => ({ id: i.id, qty: i.qty })));
-          if (prevKey !== nextKey) {
-            saveCartToStorage(merged);
-            return merged;
-          }
+        // If remote is an array (even empty), it represents the true server state
+        const prevKey = JSON.stringify(prev.map(i => ({ id: i.id, qty: i.qty })));
+        const nextKey = JSON.stringify(remote.map(i => ({ id: i.id, qty: i.qty })));
+        
+        if (prevKey !== nextKey) {
+          saveCartToStorage(remote);
+          return remote;
         }
         return prev;
       });
@@ -287,66 +323,73 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       setLastAddedItem(targetItem);
 
-      setItems((prev) => {
-        const currentList = Array.isArray(prev) ? prev : [];
-        const existingIndex = currentList.findIndex(
-          (i) => i.id === item.id || (item.slug && i.slug === item.slug)
-        );
+      const currentList = Array.isArray(itemsRef.current) ? itemsRef.current : [];
+      const existingIndex = currentList.findIndex(
+        (i) => i.id === item.id || (item.slug && i.slug === item.slug)
+      );
 
-        let nextList: CartItem[];
-        if (existingIndex > -1) {
-          nextList = currentList.map((i, idx) =>
-            idx === existingIndex ? { ...i, qty: i.qty + count } : i
-          );
-        } else {
-          nextList = [...currentList, targetItem];
-        }
+      const nextList: CartItem[] =
+        existingIndex > -1
+          ? currentList.map((i, idx) =>
+              idx === existingIndex ? { ...i, qty: i.qty + count } : i
+            )
+          : [...currentList, targetItem];
 
-        saveCartToStorage(nextList);
-        if (activeUserId) {
-          syncToServer(activeUserId, nextList);
-        }
-        return nextList;
-      });
+      itemsRef.current = nextList;
+      setItems(nextList);
+      saveCartToStorage(nextList);
+      if (activeUserId) {
+        performGranularSync(activeUserId, 'add', { id: targetItem.id, qty: count });
+      }
 
       // Always automatically open the cart sidebar so user sees immediate feedback
       setIsOpen(true);
     },
-    [activeUserId, saveCartToStorage, syncToServer]
+    [activeUserId, saveCartToStorage, performGranularSync]
   );
 
   // Remove Item
   const removeItem = useCallback(
     (id: string) => {
-      setItems((prev) => {
-        const currentList = Array.isArray(prev) ? prev : [];
-        const nextList = currentList.filter((i) => i.id !== id);
-        saveCartToStorage(nextList);
-        if (activeUserId) {
-          syncToServer(activeUserId, nextList);
-        }
-        return nextList;
-      });
+      const currentList = Array.isArray(itemsRef.current) ? itemsRef.current : [];
+      const targetItem = currentList.find((i) => matchesCartItem(i, id));
+      if (!targetItem) return;
+
+      const nextList = currentList.filter((i) => !matchesCartItem(i, id));
+      itemsRef.current = nextList;
+      setItems(nextList);
+      saveCartToStorage(nextList);
+      if (activeUserId) {
+        performGranularSync(activeUserId, 'remove', { id: targetItem.id });
+      }
     },
-    [activeUserId, saveCartToStorage, syncToServer]
+    [activeUserId, saveCartToStorage, performGranularSync]
   );
 
   // Update Item Quantity
   const updateQty = useCallback(
     (id: string, delta: number) => {
-      setItems((prev) => {
-        const currentList = Array.isArray(prev) ? prev : [];
-        const nextList = currentList
-          .map((i) => (i.id === id ? { ...i, qty: i.qty + delta } : i))
-          .filter((i) => i.qty > 0);
-        saveCartToStorage(nextList);
-        if (activeUserId) {
-          syncToServer(activeUserId, nextList);
+      const currentList = Array.isArray(itemsRef.current) ? itemsRef.current : [];
+      const targetItem = currentList.find((i) => matchesCartItem(i, id));
+      if (!targetItem) return;
+
+      const newQty = targetItem.qty + delta;
+      const nextList = currentList
+        .map((i) => (matchesCartItem(i, id) ? { ...i, qty: newQty } : i))
+        .filter((i) => i.qty > 0);
+
+      itemsRef.current = nextList;
+      setItems(nextList);
+      saveCartToStorage(nextList);
+      if (activeUserId) {
+        if (newQty <= 0) {
+          performGranularSync(activeUserId, 'remove', { id: targetItem.id });
+        } else {
+          performGranularSync(activeUserId, 'update', { id: targetItem.id, qty: newQty });
         }
-        return nextList;
-      });
+      }
     },
-    [activeUserId, saveCartToStorage, syncToServer]
+    [activeUserId, saveCartToStorage, performGranularSync]
   );
 
   // Cross-tab synchronization
@@ -382,6 +425,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // Clear Cart
   const clearCart = useCallback(() => {
+    itemsRef.current = [];
     setItems([]);
     if (typeof window !== 'undefined') {
       try {
